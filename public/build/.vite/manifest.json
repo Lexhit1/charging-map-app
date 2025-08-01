@@ -1,0 +1,92 @@
+{
+  "node_modules/leaflet/dist/images/layers-2x.png": {
+    "file": "assets/layers-2x-Bpkbi35X.png",
+    "src": "node_modules/leaflet/dist/images/layers-2x.png"
+  },
+  "node_modules/leaflet/dist/images/layers.png": {
+    "file": "assets/layers-BWBAp2CZ.png",
+    "src": "node_modules/leaflet/dist/images/layers.png"
+  },
+  "node_modules/leaflet/dist/images/marker-icon-2x.png": {
+    "file": "assets/marker-icon-2x-1TirABJh.js",
+    "name": "marker-icon-2x",
+    "src": "node_modules/leaflet/dist/images/marker-icon-2x.png",
+    "isDynamicEntry": true,
+    "assets": [
+      "assets/marker-icon-2x-_ZA0WGCc.png"
+    ]
+  },
+  "node_modules/leaflet/dist/images/marker-icon.png": {
+    "file": "assets/marker-icon-B6h-nX3D.js",
+    "name": "marker-icon",
+    "src": "node_modules/leaflet/dist/images/marker-icon.png",
+    "isDynamicEntry": true,
+    "assets": [
+      "assets/marker-icon-hN30_KVU.png"
+    ]
+  },
+  "node_modules/leaflet/dist/images/marker-shadow.png": {
+    "file": "assets/marker-shadow-B9CpECYs.js",
+    "name": "marker-shadow",
+    "src": "node_modules/leaflet/dist/images/marker-shadow.png",
+    "isDynamicEntry": true,
+    "assets": [
+      "assets/marker-shadow-f7SaPCxT.png"
+    ]
+  },
+  "node_modules/leaflet/dist/leaflet-src.esm.js": {
+    "file": "assets/leaflet-src.esm-HdBnhJze.js",
+    "name": "leaflet-src.esm",
+    "src": "node_modules/leaflet/dist/leaflet-src.esm.js",
+    "isDynamicEntry": true
+  },
+  "public/img/plug-green.png": {
+    "file": "assets/plug-green-DyW7fBD1.png",
+    "src": "public/img/plug-green.png"
+  },
+  "public/img/plug-red.png": {
+    "file": "assets/plug-red-BlKoCl4A.png",
+    "src": "public/img/plug-red.png"
+  },
+  "public/img/plug-yellow.png": {
+    "file": "assets/plug-yellow-Bc_sns0n.png",
+    "src": "public/img/plug-yellow.png"
+  },
+  "resources/css/app.css": {
+    "file": "assets/app-CLhcFQy1.css",
+    "src": "resources/css/app.css",
+    "isEntry": true,
+    "names": [
+      "app.css"
+    ]
+  },
+  "resources/js/app.js": {
+    "file": "assets/app-BLE-ibhL.js",
+    "name": "app",
+    "src": "resources/js/app.js",
+    "isEntry": true,
+    "dynamicImports": [
+      "node_modules/leaflet/dist/images/marker-icon-2x.png",
+      "node_modules/leaflet/dist/images/marker-icon.png",
+      "node_modules/leaflet/dist/images/marker-shadow.png",
+      "node_modules/leaflet/dist/leaflet-src.esm.js",
+      "node_modules/leaflet/dist/leaflet-src.esm.js",
+      "node_modules/leaflet/dist/leaflet-src.esm.js",
+      "node_modules/leaflet/dist/leaflet-src.esm.js",
+      "node_modules/leaflet/dist/leaflet-src.esm.js",
+      "node_modules/leaflet/dist/leaflet-src.esm.js",
+      "node_modules/leaflet/dist/leaflet-src.esm.js"
+    ],
+    "css": [
+      "assets/app-C5kqqz4z.css"
+    ],
+    "assets": [
+      "assets/plug-green-DyW7fBD1.png",
+      "assets/plug-yellow-Bc_sns0n.png",
+      "assets/plug-red-BlKoCl4A.png",
+      "assets/layers-BWBAp2CZ.png",
+      "assets/layers-2x-Bpkbi35X.png",
+      "assets/marker-icon-hN30_KVU.png"
+    ]
+  }
+}
