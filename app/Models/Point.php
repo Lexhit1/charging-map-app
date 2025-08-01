@@ -21,4 +21,16 @@ class Point extends Model
     public function comments() {
         return $this->hasMany(Comment::class);
     }
-}
+
+ 
+    public function getLocationAttribute($value)
+
+    {
+     if (!$value) return null;
+     // Преобразуем geometry в текст (WKT) — PostGIS функция ST_AsText
+     $result = \DB::select("SELECT ST_AsText('{$value}') AS wkt");
+     return $result[0]->wkt ?? null;
+    }
+
+}   
+    

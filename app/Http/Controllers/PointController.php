@@ -10,6 +10,12 @@ use Illuminate\Support\Facades\Http;
 
 class PointController extends Controller
 {
+    public function index()
+{
+    // Получаем все точки, user, comments
+    $points = \App\Models\Point::with(['user', 'comments'])->get();
+    return response()->json($points);
+}
     public function store(Request $request)
 {
     $attrs = $request->validate([

@@ -134,29 +134,36 @@ export default {
     };
   },
   mounted() {
-    if (this.token) {
-      axios.get('/api/user', {
-        headers: { Authorization: `Bearer ${this.token}` }
-      }).then(res => this.user = res.data).catch(() => {
-        this.token = null;
-        localStorage.removeItem('token');
+  if (localStorage.getItem('token')) {
+    axios.get('/api/user', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    })
+      .then(res => this.user = res.data)
+      .catch(() => {
+         localStorage.removeItem('token');
+         this.user = null;
       });
+  }
+  this.fetchPoints();
+  this.$nextTick(() => {
+    if (this.$refs.map && this.$refs.map.mapObject) {
+      this.$refs.map.mapObject.invalidateSize();
     }
-    this.fetchPoints();
-    this.$nextTick(() => {
-      if (this.$refs.map && this.$refs.map.mapObject) {
-        this.$refs.map.mapObject.invalidateSize();
-      }
-    });
-  },
+  });
+},
   methods: {
     plugIcon(type) {
       return this.plugIcons[type] || this.plugIcons.green;
     },
     pointLatLng(point) {
-      let m = point.location.match(/POINT\\((.*) (.*)\\)/);
-      if (m) return [parseFloat(m[2]), parseFloat(m[1])];
-      if (point.lat && point.lng) return [point.lat, point.lng];
+      if (!point.location) return null;
+      // location формата "POINT(30.391616821289 59.950540696142)"
+      const match = String(point.location).match(/POINT\(([-\d.]+) ([-\d.]+)\)/);
+      if (match) {
+        // Leaflet ждет [lat, lng]
+        // match[2] — широта (59.95...), match[1] — долгота (30.39...)
+        return [parseFloat(match[2]), parseFloat(match[1])];
+      }
       return null;
     },
     async fetchPoints() {
