@@ -1,13 +1,14 @@
 <template>
   <div>
-    <!-- Шапка с кнопками логина/регистрации -->
+    <!-- Шапка -->
     <div class="map-header" style="margin-bottom:8px;">
       <span v-if="user">
         👤 Привет, {{ user.username }}! | <b>Точек добавлено:</b> {{ user.points_created }}
         <button @click="logout">🗝️ Выйти</button>
       </span>
       <span v-else>
-        <button @click="openAuth('login')">Войти</button> |
+        <button @click="openAuth('login')">Войти</button>
+        |
         <button @click="openAuth('register')">Регистрация</button>
       </span>
       <button v-if="user" @click="enableAddMode" :disabled="addingPoint" style="margin-left:16px;">➕ Добавить точку</button>
@@ -21,13 +22,13 @@
       @click="onMapClick"
     >
       <l-tile-layer :url="tileLayer"></l-tile-layer>
-      <!-- Все точки (иконка = по типу розетки) -->
       <l-marker
-        v-for="point in points"
-        :key="point.id"
-        :lat-lng="pointLatLng(point)"
-        :icon="plugIcon(point.type)"
-      >
+  v-for="point in points"
+  :key="point.id"
+  v-if="pointLatLng(point)"
+  :lat-lng="pointLatLng(point)"
+  :icon="plugIcon(point.type)"
+>
         <l-popup>
           <div>
             <h4><b>{{ point.name }}</b></h4>
@@ -42,21 +43,17 @@
             <div v-for="c in point.comments" :key="c.id" style="font-size:14px">
               <i>{{c.user?.username || 'Аноним'}}:</i> {{c.comment}}
             </div>
-            <!-- Добавление комментария (только для залогиненных) -->
             <div v-if="user" style="margin-top:6px;">
               <textarea v-model="newComment[point.id]" placeholder="Комментарий" rows="1"></textarea>
               <button @click="submitComment(point.id)">Отправить</button>
             </div>
-            <!-- Загрузка фото (заготовка UI — бек реализуй через отдельное API, если надо) -->
             <div v-if="user" style="margin-top:6px">
               <input type="file" @change="onPhotoSelected($event, point.id)" />
             </div>
-            <!-- Построить маршрут (только авторизованный) -->
             <button v-if="user" @click="routeTo(point)">Маршрут до сюда</button>
           </div>
         </l-popup>
       </l-marker>
-      <!-- Новый маркер на этапе добавления (до подтверждения) -->
       <l-marker v-if="addingPoint && newLatLng" :lat-lng="newLatLng" :icon="plugIcon(newPoint.type)">
         <l-popup>
           <div>
@@ -83,9 +80,27 @@
     <div v-if="authDialog" class="modal">
       <div class="modal-content">
         <h3>{{ authMode === 'login' ? 'Вход' : 'Регистрация' }}</h3>
-        <input v-model="authData.username" placeholder="Логин" />
-        <input v-model="authData.password" placeholder="Пароль (4-8 цифр)" maxlength="8" type="password" />
-        <button @click="submitAuth">{{ authMode === 'login' ? 'Войти' : 'Зарегистрироваться' }}</button>
+        <form @submit.prevent="submitAuth">
+          <input
+            v-model="authData.username"
+            name="username"
+            id="auth-username"
+            placeholder="Логин"
+            autocomplete="username"
+            required
+          />
+          <input
+            v-model="authData.password"
+            name="password"
+            id="auth-password"
+            type="password"
+            maxlength="8"
+            placeholder="Пароль"
+            :autocomplete="authMode === 'login' ? 'current-password' : 'new-password'"
+            required
+          />
+          <button type="submit">{{ authMode === 'login' ? 'Войти' : 'Зарегистрироваться' }}</button>
+        </form>
         <button @click="closeAuth">Отмена</button>
         <div v-if="authError" style="color:red; margin-top:8px;">{{authError}}</div>
       </div>
@@ -104,12 +119,7 @@ import plugRed from '/public/img/plug-red.png';
 
 export default {
   name: 'MapComponent',
-  components: {
-    LMap,
-    LTileLayer,
-    LMarker,
-    LPopup
-  },
+  components: { LMap, LTileLayer, LMarker, LPopup },
   data() {
     return {
       tileLayer: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -134,27 +144,29 @@ export default {
     };
   },
   mounted() {
-    if (this.token) {
-      axios.get('/api/user', {
-        headers: { Authorization: `Bearer ${this.token}` }
-      }).then(res => this.user = res.data).catch(() => {
-        this.token = null;
-        localStorage.removeItem('token');
+  if (localStorage.getItem('token')) {
+    axios.get('/api/user', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    })
+      .then(res => this.user = res.data)
+      .catch(() => {
+         localStorage.removeItem('token');
+         this.user = null;
       });
+  }
+  this.fetchPoints();
+  this.$nextTick(() => {
+    if (this.$refs.map && this.$refs.map.mapObject) {
+      this.$refs.map.mapObject.invalidateSize();
     }
-    this.fetchPoints();
-    this.$nextTick(() => {
-      if (this.$refs.map && this.$refs.map.mapObject) {
-        this.$refs.map.mapObject.invalidateSize();
-      }
-    });
-  },
+  });
+},
   methods: {
     plugIcon(type) {
       return this.plugIcons[type] || this.plugIcons.green;
     },
     pointLatLng(point) {
-      let m = point.location.match(/POINT\\((.*) (.*)\\)/);
+      let m = point.location.match(/POINT\((.*) (.*)\)/);
       if (m) return [parseFloat(m[2]), parseFloat(m[1])];
       if (point.lat && point.lng) return [point.lat, point.lng];
       return null;
@@ -276,6 +288,23 @@ export default {
     }
   }
 };
+
+onMounted(() => {
+  // Эта логика для setup API
+  if (token.value && !user.value) {
+    axios.get('/api/user', {
+      headers: { Authorization: `Bearer ${token.value}` }
+    })
+      .then(res => user.value = res.data)
+      .catch(() => {
+        token.value = null;
+        localStorage.removeItem('token');
+      });
+  }
+  fetchPoints();
+  // Можешь добавить исправление для карты — invalidateSize — если нужно
+});
+
 </script>
 
 <style>
@@ -287,10 +316,18 @@ export default {
   margin: 12px 0;
 }
 .modal {
-  position: fixed; top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;
-  z-index: 1000;
+  position: fixed; top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.3);
+  display:flex;align-items:center;justify-content:center;
+  /* увеличенный z-index гарантирует, что модалка перекроет карту и popups Leaflet */
+  z-index: 10000;
 }
 .modal-content {
-  background:#fff;padding:2em;border-radius:1em;min-width:280px;box-shadow:0 8px 40px #0002;
+  background:#fff;
+  padding:2em;
+  border-radius:1em;
+  min-width:280px;
+  box-shadow:0 8px 40px #0002;
+  z-index: 11000;
+  position: relative;
 }
 </style>
