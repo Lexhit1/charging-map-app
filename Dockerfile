@@ -31,10 +31,9 @@ WORKDIR /app
 
 # Копируем только package-файлы и конфиг Vite
 COPY package.json package-lock.json vite.config.js ./
-
+COPY resources/js resources/css resources/img ./resources
 # Устанавливаем зависимости и собираем фронтенд
 RUN npm ci
-COPY resources/js resources/css resources/img ./resources
 RUN npm run build
 
 ##############################################
