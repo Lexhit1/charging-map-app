@@ -5,6 +5,7 @@
 ##############################################
 FROM php:8.2-fpm AS php-build
 
+
 # Установка системных зависимостей и PHP-расширений
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y \
