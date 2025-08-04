@@ -8,13 +8,21 @@ FROM php:8.2-fpm AS php-base
 WORKDIR /var/www/html
 
 # Устанавливаем системные зависимости для PHP-расширений
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
       libzip-dev libpng-dev libjpeg-dev libonig-dev libxml2-dev \
-      zip unzip git curl && \
-    docker-php-ext-install pdo_pgsql pdo_sqlite mbstring zip xml intl && \
-    pecl install xdebug && docker-php-ext-enable xdebug && \
-    rm -rf /var/lib/apt/lists/*
+      zip unzip git curl \
+      libpq-dev libedit-dev \
+ && docker-php-ext-install \
+      pdo_pgsql \
+      pdo_sqlite \
+      mbstring \
+      zip \
+      xml \
+      intl \
+ && pecl install xdebug \
+ && docker-php-ext-enable xdebug \
+ && rm -rf /var/lib/apt/lists/*
 
 # Устанавливаем Composer
 COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
