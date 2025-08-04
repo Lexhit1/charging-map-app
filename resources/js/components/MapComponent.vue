@@ -88,9 +88,9 @@
 import { LMap, LTileLayer, LMarker, LPopup } from '@vue-leaflet/vue-leaflet';
 import L from 'leaflet';
 import axios from 'axios';
-import plugGreen from '/public/img/plug-green.png';
-import plugYellow from '/public/img/plug-yellow.png';
-import plugRed from '/public/img/plug-red.png';
+import plugGreen from './img/plug-green.png';
+import plugYellow from './img/plug-yellow.png';
+import plugRed from './img/plug-red.png';
 
 export default {
   name: 'MapComponent',

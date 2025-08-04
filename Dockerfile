@@ -60,6 +60,7 @@ FROM node:22 AS frontend-builder
 WORKDIR /var/www/html
 
 # Копируем package-файлы и собираем первоначальный билд
+COPY resources/js/components/img resources/js/components/img
 COPY package.json package-lock.json vite.config.js ./
 RUN npm ci
 

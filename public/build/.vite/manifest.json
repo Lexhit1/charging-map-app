@@ -53,7 +53,7 @@
     "src": "public/img/plug-yellow.png"
   },
   "resources/css/app.css": {
-    "file": "assets/app-tn0RQdqM.css",
+    "file": "assets/app-Dq-OGRHK.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "names": [
@@ -61,7 +61,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-D6u9Vj2G.js",
+    "file": "assets/app-blUvbujW.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -79,7 +79,7 @@
     ],
     "css": [
       "assets/app-C5kqqz4z.css",
-      "assets/app-tn0RQdqM.css"
+      "assets/app-Dq-OGRHK.css"
     ],
     "assets": [
       "assets/plug-green-DyW7fBD1.png",
