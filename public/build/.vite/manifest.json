@@ -40,18 +40,6 @@
     "src": "node_modules/leaflet/dist/leaflet-src.esm.js",
     "isDynamicEntry": true
   },
-  "public/img/plug-green.png": {
-    "file": "assets/plug-green-DyW7fBD1.png",
-    "src": "public/img/plug-green.png"
-  },
-  "public/img/plug-red.png": {
-    "file": "assets/plug-red-BlKoCl4A.png",
-    "src": "public/img/plug-red.png"
-  },
-  "public/img/plug-yellow.png": {
-    "file": "assets/plug-yellow-Bc_sns0n.png",
-    "src": "public/img/plug-yellow.png"
-  },
   "resources/css/app.css": {
     "file": "assets/app-Dq-OGRHK.css",
     "src": "resources/css/app.css",
@@ -89,5 +77,17 @@
       "assets/layers-2x-Bpkbi35X.png",
       "assets/marker-icon-hN30_KVU.png"
     ]
+  },
+  "resources/js/components/img/plug-green.png": {
+    "file": "assets/plug-green-DyW7fBD1.png",
+    "src": "resources/js/components/img/plug-green.png"
+  },
+  "resources/js/components/img/plug-red.png": {
+    "file": "assets/plug-red-BlKoCl4A.png",
+    "src": "resources/js/components/img/plug-red.png"
+  },
+  "resources/js/components/img/plug-yellow.png": {
+    "file": "assets/plug-yellow-Bc_sns0n.png",
+    "src": "resources/js/components/img/plug-yellow.png"
   }
 }
