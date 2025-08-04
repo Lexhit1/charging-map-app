@@ -13,6 +13,7 @@ RUN apt-get update \
       libzip-dev libpng-dev libjpeg-dev libonig-dev libxml2-dev \
       zip unzip git curl \
       libpq-dev libedit-dev \
+      sqlite3 pkg-config libsqlite3-dev \
  && docker-php-ext-install \
       pdo_pgsql \
       pdo_sqlite \
