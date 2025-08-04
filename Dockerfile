@@ -11,14 +11,18 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PHP_VERSION=8.2.0
 
 # Устанавливаем зависимости для сборки PHP и расширений
-RUN apt-get update && apt-get install -y \
-    build-essential ca-certificates curl git unzip \
-    autoconf libtool pkg-config xz-utils locales fontconfig \
-    libssl-dev libzip-dev libpng-dev libjpeg62-turbo-dev \
-    libxml2-dev libonig-dev zlib1g-dev libicu-dev libxslt1-dev \
-    libtidy-dev libevent-dev libgmp-dev libcurl4-gnutls-dev \
-    sqlite3 libsqlite3-dev \
-    postgresql-server-dev-all \
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      build-essential ca-certificates curl git unzip \
+      autoconf libtool pkg-config xz-utils \
+      locales fontconfig \
+      libssl-dev libzip-dev libpng-dev libjpeg62-turbo-dev \
+      libxml2-dev libonig-dev zlib1g-dev \
+      libicu-dev libxslt1-dev libtidy-dev libevent-dev \
+      libgmp-dev libcurl4-gnutls-dev \
+      libedit-dev \
+      sqlite3 libsqlite3-dev \
+      postgresql-server-dev-all \
  && locale-gen en_US.UTF-8 \
  && update-ca-certificates \
  && rm -rf /var/lib/apt/lists/*
