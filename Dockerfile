@@ -1,36 +1,61 @@
-FROM php:8.3-fpm
+# 1. Базовый образ с PHP 8.2
+FROM php:8.2-fpm
 
-# Установи зависимости для PHP, PostgreSQL и PostGIS
+# 2. Системные зависимости и psql
 RUN apt-get update && apt-get install -y \
     libpq-dev \
-    libzip-dev \
-    unzip \
+    postgresql-client \
     git \
-    libonig-dev \
-    libxml2-dev \
-    && docker-php-ext-install pdo pdo_pgsql zip mbstring xml
+    unzip \
+    curl \
+    zip \
+    nodejs \
+    npm \
+  && docker-php-ext-install pdo_pgsql \
+  && rm -rf /var/lib/apt/lists/*
 
-# Установи Composer
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+# 3. Устанавливаем Composer (копируем из оф. образа)
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Установи Node.js для npm (версия 20)
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs
-
-# Обнови npm до последней версии (чтобы избежать уведомлений и ошибок)
-RUN npm install -g npm@11.5.1
-
-# Скопируй код проекта
+# 4. Рабочая директория
 WORKDIR /var/www/html
+
+# 5. Копируем код проекта
 COPY . .
 
-# Установи права
-RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
-
-# Установи зависимости и собери ассеты (с фиксом для ERESOLVE)
+# 6. Устанавливаем PHP-зависимости
 RUN composer install --no-dev --optimize-autoloader
-RUN npm install --legacy-peer-deps
+
+# 7. Собираем фронтенд (Vite)
+RUN npm ci
 RUN npm run build
 
-# Запусти сервер
-CMD php artisan serve --host=0.0.0.0 --port=10000
+# 8. Кэшируем Laravel-конфигурацию и маршруты
+RUN php artisan config:cache
+RUN php artisan route:cache
+
+# 9. Активируем PostGIS прямо в контейнере
+#    Задайте PGPASSWORD через ENV, чтобы psql считал пароль
+ENV PGPASSWORD="fWLDAhjj4axZlfx2RTe1sTFF3OyDs1uP"
+#    Выполняем CREATE EXTENSION
+RUN psql -h dpg-d26j47juibrs739va4t0-a.frankfurt-postgres.render.com \
+         -U charging_map_user \
+         -d charging_map_db \
+         -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+RUN psql -h dpg-d26j47juibrs739va4t0-a.frankfurt-postgres.render.com \
+         -U charging_map_user \
+         -d charging_map_db \
+         -c "CREATE EXTENSION IF NOT EXISTS postgis_raster;"
+RUN psql -h dpg-d26j47juibrs739va4t0-a.frankfurt-postgres.render.com \
+         -U charging_map_user \
+         -d charging_map_db \
+         -c "CREATE EXTENSION IF NOT EXISTS postgis_topology;"
+
+# 10. Сбрасываем и применяем все миграции
+RUN php artisan migrate:reset --force
+RUN php artisan migrate --force
+
+# 11. Права и запуск
+RUN chown -R www-data:www-data /var/www/html
+CMD ["php-fpm"]
+
