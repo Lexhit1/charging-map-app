@@ -54,10 +54,16 @@ COPY composer.json composer.lock ./
 RUN composer install --no-dev --optimize-autoloader
 
 # Устанавливаем Node.js и npm
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs
+
+FROM node:22 AS frontend-builder
+WORKDIR /var/www/html
+COPY package*.json vite.config.js ./
+RUN npm ci
+COPY resources/js resources/js
+RUN npm run build
 
 # Копируем фронтенд-код и устанавливаем npm-зависимости, создаём билд
+
 COPY package.json package-lock.json ./
 RUN npm ci
 
