@@ -1,1 +1,5 @@
-
+/* Ваши стили для приложения */
+body { margin:0; font-family:Arial,sans-serif; }
+#app { padding:0; }
+.map-header button { cursor:pointer; }
+textarea { width:100%; box-sizing:border-box; }

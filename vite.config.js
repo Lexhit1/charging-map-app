@@ -5,9 +5,11 @@ import vue from '@vitejs/plugin-vue';
 export default defineConfig({
   plugins: [
     laravel({
-      input: ['resources/css/app.css', 'resources/js/app.js'],
+      input: [
+        'resources/css/app.css',
+        'resources/js/app.js'
+      ],
       refresh: true,
-      publicDirectory: 'public',      // гарантирует output в public/build
     }),
     vue({
       template: {
@@ -18,22 +20,6 @@ export default defineConfig({
       },
     }),
   ],
-  build: {
-    manifest: true,
-    outDir: 'public/build',
-    emptyOutDir: true,               // очищать папку перед билдом
-    rollupOptions: {
-      input: {
-        main: 'resources/js/app.js',
-        style: 'resources/css/app.css',
-      },
-    },
-  },
-  resolve: {
-    alias: {
-      vue: 'vue/dist/vue.esm-bundler.js',
-    },
-  },
   server: {
     proxy: {
       '/api': {
@@ -41,6 +27,15 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+    },
+  },
+  build: {
+    manifest: true,
+    outDir: 'public/build',
+  },
+  resolve: {
+    alias: {
+      'vue': 'vue/dist/vue.esm-bundler.js',
     },
   },
 });
