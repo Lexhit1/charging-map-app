@@ -1,61 +1,98 @@
-# 1. Базовый образ с PHP 8.2
-FROM php:8.2-fpm
+# syntax=docker/dockerfile:1
 
-# 2. Системные зависимости и psql
-RUN apt-get update && apt-get install -y \
-    libpq-dev \
-    postgresql-client \
-    git \
-    unzip \
-    curl \
-    zip \
-    nodejs \
-    npm \
-  && docker-php-ext-install pdo_pgsql \
-  && rm -rf /var/lib/apt/lists/*
+##############################################
+# 1. Stage: builder                        #
+##############################################
+FROM debian:12.6 AS builder
 
-# 3. Устанавливаем Composer (копируем из оф. образа)
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# Устанавливаем базовые пакеты и инструменты сборки
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      build-essential ca-certificates curl git unzip \
+      libssl-dev libzip-dev libpq-dev libpng-dev libxml2-dev \
+      libonig-dev pkg-config autoconf libtool \
+      zlib1g-dev libjpeg62-turbo-dev libfreetype6-dev \
+      libgmp-dev libcurl4-gnutls-dev libicu-dev \
+      libtidy-dev libxslt1-dev libevent-dev \
+      xz-utils fontconfig locales && \
+    locale-gen en_US.UTF-8
 
-# 4. Рабочая директория
+ENV LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8 \
+    PHP_VERSION=8.2.0
+
+# Скачиваем, собираем и устанавливаем PHP
+WORKDIR /usr/src/php
+RUN curl -SL "https://www.php.net/distributions/php-$PHP_VERSION.tar.xz" -o php.tar.xz && \
+    tar -xf php.tar.xz --strip-components=1 && \
+    ./configure \
+      --prefix=/usr/local \
+      --with-pdo-pgsql=shared \
+      --with-pgsql=shared \
+      --with-openssl \
+      --enable-mbstring \
+      --with-zlib \
+      --enable-json \
+      --enable-fpm \
+      --with-curl \
+      --enable-zip \
+      --with-libedit \
+      --enable-intl \
+      --with-xsl \
+      --enable-soap \
+      --enable-bcmath && \
+    make -j"$(nproc)" && \
+    make install && \
+    make clean
+
+# Устанавливаем Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
+
+# Копируем приложение и устанавливаем PHP-зависимости
 WORKDIR /var/www/html
-
-# 5. Копируем код проекта
-COPY . .
-
-# 6. Устанавливаем PHP-зависимости
+COPY composer.json composer.lock ./
 RUN composer install --no-dev --optimize-autoloader
 
-# 7. Собираем фронтенд (Vite)
+# Устанавливаем Node.js и npm
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs
+
+# Копируем фронтенд-код и устанавливаем npm-зависимости, создаём билд
+COPY package.json package-lock.json ./
 RUN npm ci
+
+COPY resources/js resources/js
+COPY vite.config.js ./
 RUN npm run build
 
-# 8. Кэшируем Laravel-конфигурацию и маршруты
-RUN php artisan config:cache
-RUN php artisan route:cache
+##############################################
+# 2. Stage: runtime                        #
+##############################################
+FROM debian:12.6 AS runtime
 
-# 9. Активируем PostGIS прямо в контейнере
-#    Задайте PGPASSWORD через ENV, чтобы psql считал пароль
-ENV PGPASSWORD="fWLDAhjj4axZlfx2RTe1sTFF3OyDs1uP"
-#    Выполняем CREATE EXTENSION
-RUN psql -h dpg-d26j47juibrs739va4t0-a.frankfurt-postgres.render.com \
-         -U charging_map_user \
-         -d charging_map_db \
-         -c "CREATE EXTENSION IF NOT EXISTS postgis;"
-RUN psql -h dpg-d26j47juibrs739va4t0-a.frankfurt-postgres.render.com \
-         -U charging_map_user \
-         -d charging_map_db \
-         -c "CREATE EXTENSION IF NOT EXISTS postgis_raster;"
-RUN psql -h dpg-d26j47juibrs739va4t0-a.frankfurt-postgres.render.com \
-         -U charging_map_user \
-         -d charging_map_db \
-         -c "CREATE EXTENSION IF NOT EXISTS postgis_topology;"
+# Устанавливаем рантайм-зависимости
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      ca-certificates libpq5 libpng16-16 libxml2 \
+      libonig5 libzip4 libicu72 tzdata && \
+    rm -rf /var/lib/apt/lists/*
 
-# 10. Сбрасываем и применяем все миграции
-RUN php artisan migrate:reset --force
-RUN php artisan migrate --force
+# Создаём пользователя для запуска приложения
+RUN useradd -M -d /home/app -s /usr/sbin/nologin app
 
-# 11. Права и запуск
-RUN chown -R www-data:www-data /var/www/html
-CMD ["php-fpm"]
+WORKDIR /var/www/html
 
+# Копируем из builder всё содержимое приложения и собранный фронтенд
+COPY --from=builder /usr/local/bin/php /usr/local/bin/php
+COPY --from=builder /usr/local/lib/php /usr/local/lib/php
+COPY --from=builder /usr/bin/composer /usr/bin/composer
+COPY --from=builder /var/www/html /var/www/html
+
+# Меняем владельца файлов на неопределённого пользователя
+RUN chown -R app:app /var/www/html
+
+USER app
+
+# Expose порт и точка входа
+EXPOSE 9000
+CMD ["php-fpm", "-F"]
