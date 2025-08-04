@@ -5,16 +5,16 @@
 ##############################################
 FROM debian:12.6 AS php-builder
 
-# Устанавливаем системные и сборочные зависимости
+# Сборочные зависимости для PHP и расширений
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     build-essential ca-certificates curl git unzip \
-    libssl-dev libzip-dev libpng-dev libxml2-dev \
-    libonig-dev pkg-config autoconf libtool \
-    zlib1g-dev libjpeg62-turbo-dev libfreetype6-dev \
-    libgmp-dev libcurl4-gnutls-dev libicu-dev \
-    libtidy-dev libxslt1-dev libevent-dev \
-    xz-utils fontconfig locales \
+    autoconf libtool pkg-config xz-utils \
+    locales fontconfig \
+    libssl-dev libzip-dev libpng-dev libjpeg62-turbo-dev \
+    libxml2-dev libonig-dev zlib1g-dev \
+    libicu-dev libxslt1-dev libtidy-dev libevent-dev \
+    libgmp-dev libcurl4-gnutls-dev \
     sqlite3 libsqlite3-dev \
     postgresql-server-dev-all \
  && locale-gen en_US.UTF-8 \
@@ -26,7 +26,7 @@ ENV LANG=en_US.UTF-8 \
 
 WORKDIR /usr/src/php
 
-# Скачиваем и собираем PHP из исходников
+# Скачиваем, конфигурируем и собираем PHP
 RUN curl -SL "https://www.php.net/distributions/php-$PHP_VERSION.tar.xz" -o php.tar.xz \
  && tar -xf php.tar.xz --strip-components=1 \
  && ./configure \
@@ -35,7 +35,6 @@ RUN curl -SL "https://www.php.net/distributions/php-$PHP_VERSION.tar.xz" -o php.
       --with-pgsql=shared \
       --with-openssl \
       --enable-mbstring \
-      --with-zlib \
       --enable-fpm \
       --with-curl \
       --with-zip \
@@ -52,7 +51,7 @@ RUN curl -SL "https://www.php.net/distributions/php-$PHP_VERSION.tar.xz" -o php.
 # Устанавливаем Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 
-# Копируем PHP-приложение и устанавливаем зависимости
+# Устанавливаем PHP-зависимости приложения
 WORKDIR /var/www/html
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --optimize-autoloader
@@ -64,11 +63,11 @@ FROM node:22 AS frontend-builder
 
 WORKDIR /var/www/html
 
-# Копируем package-файлы и заранее картинки для иконок
+# Устанавливаем JS-зависимости
 COPY package.json package-lock.json vite.config.js ./
 RUN npm ci
 
-# Копируем ресурсы и собираем финальную фронтенд-версию
+# Собираем ресурсы
 COPY resources/js resources/js
 COPY resources/css resources/css
 COPY resources/img resources/img
@@ -79,7 +78,7 @@ RUN npm run build
 ##############################################
 FROM debian:12.6 AS runtime
 
-# Только рантайм-зависимости
+# Рантайм-зависимости
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y \
       ca-certificates libpq5 libpng16-16 libxml2 \
@@ -91,16 +90,15 @@ RUN useradd -M -d /home/app -s /usr/sbin/nologin app
 
 WORKDIR /var/www/html
 
-# Копируем PHP-движок, Composer и приложение из билдера
+# Копируем PHP-исполняемый файл, библиотеки и приложение
 COPY --from=php-builder /usr/local/bin/php /usr/local/bin/php
 COPY --from=php-builder /usr/local/lib/php /usr/local/lib/php
 COPY --from=php-builder /usr/bin/composer /usr/bin/composer
 COPY --from=php-builder /var/www/html /var/www/html
 
-# Копируем собранный фронтенд
+# Копируем фронтенд-билд
 COPY --from=frontend-builder /var/www/html/public/build public/build
 
-# Прав на папки и запуск от пользователя app
 RUN chown -R app:app /var/www/html
 USER app
 
