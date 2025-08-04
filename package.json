@@ -21,6 +21,8 @@
         "vue": "^3.5.18"
     },
     "dependencies": {
+        "@esbuild-plugins/node-globals-polyfill": "^0.2.3",
+        "crypto-browserify": "^3.12.1",
         "leaflet": "^1.9.4",
         "leaflet-routing-machine": "^3.2.12"
     },

@@ -1,13 +1,15 @@
 import { defineConfig } from 'vite';
 import laravel from 'laravel-vite-plugin';
 import vue from '@vitejs/plugin-vue';
+import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
 
 export default defineConfig({
   plugins: [
+    // Laravel + Vue
     laravel({
       input: [
         'resources/css/app.css',
-        'resources/js/app.js'
+        'resources/js/app.js',
       ],
       refresh: true,
     }),
@@ -19,7 +21,23 @@ export default defineConfig({
         },
       },
     }),
+    // Polyfill для Node.js globals
+    {
+      ...NodeGlobalsPolyfillPlugin({
+        buffer: true,
+        process: true,
+      }),
+      enforce: 'post', // важно задать порядок
+    },
   ],
+
+  resolve: {
+    alias: {
+      crypto: 'crypto-browserify',
+      vue: 'vue/dist/vue.esm-bundler.js',
+    },
+  },
+
   server: {
     proxy: {
       '/api': {
@@ -29,13 +47,12 @@ export default defineConfig({
       },
     },
   },
+
   build: {
     manifest: true,
     outDir: 'public/build',
-  },
-  resolve: {
-    alias: {
-      'vue': 'vue/dist/vue.esm-bundler.js',
+    rollupOptions: {
+      external: ['crypto'],
     },
   },
 });
