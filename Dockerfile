@@ -1,73 +1,61 @@
 # syntax=docker/dockerfile:1
-
 ##############################################
-# 1. Stage: php-build                       #
+# 1. Stage: builder (PHP + Composer)        #
 ##############################################
-FROM php:8.2-fpm AS php-build
+FROM php:8.2-fpm AS php-builder
 
-
-# Установка системных зависимостей и PHP-расширений
+# Системные зависимости, расширения PHP и Composer
 RUN apt-get update \
-  && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-       git curl zlib1g-dev libpng-dev libonig-dev libxml2-dev \
-       libzip-dev libicu-dev libxslt1-dev libpq-dev \
-  && docker-php-ext-install \
-       pdo_pgsql mbstring exif pcntl bcmath gd xml zip intl xsl \
-  && rm -rf /var/lib/apt/lists/*
+ && apt-get install -y \
+      libpq-dev libzip-dev zlib1g-dev libpng-dev libxml2-dev libonig-dev \
+      git curl unzip \
+ && docker-php-ext-install pdo_pgsql mbstring exif pcntl bcmath gd xml zip \
+ && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer \
+ && rm -rf /var/lib/apt/lists/*
 
-# Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
-WORKDIR /app
+WORKDIR /var/www/html
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --optimize-autoloader \
-  && rm -rf ~/.composer/cache
+RUN composer install --no-dev --optimize-autoloader
 
 ##############################################
-# 2. Stage: node-build                      #
+# 2. Stage: builder (Node + Vite build)      #
 ##############################################
-FROM node:22 AS node-build
+FROM node:18-alpine AS node-builder
 
-WORKDIR /app
+WORKDIR /var/www/html
 
-# Копируем только package-файлы и конфиг Vite
+# Копируем фронтенд-конфиги и зависимости
 COPY package.json package-lock.json vite.config.js ./
-COPY resources/js resources/css resources/img ./resources
-# Устанавливаем зависимости и собираем фронтенд
 RUN npm ci
+
+# Копируем исходники и собираем статику
+COPY resources/js resources/js
+COPY resources/css resources/css
 RUN npm run build
 
 ##############################################
-# 3. Stage: runtime                          #
+# 3. Stage: production runtime               #
 ##############################################
-FROM php:8.2-fpm AS runtime
+FROM php:8.2-fpm
 
-# Установка рантайм-зависимостей (меньше размеров)
+# Устанавливаем runtime-зависимости
 RUN apt-get update \
-  && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-       libpng16-16 libonig5 libxml2 libzip4 libicu72 libxslt1.1 \
-       libpq5 \
-  && rm -rf /var/lib/apt/lists/*
+ && apt-get install -y \
+      libpq5 libzip4 libpng16-16 libxml2 libonig5 tzdata \
+ && rm -rf /var/lib/apt/lists/*
 
-# Создаём пользователя (необязательно)
-RUN useradd -M -d /home/app -s /usr/sbin/nologin app
-
-WORKDIR /app
-
-# Копируем PHP-приложение и зависимости
-COPY --from=php-build /app /app
-COPY --from=php-build /usr/local/etc/php/conf.d /usr/local/etc/php/conf.d
-COPY --from=php-build /usr/local/bin/php /usr/local/bin/php
-COPY --from=php-build /usr/local/lib/php /usr/local/lib/php
-COPY --from=php-build /usr/bin/composer /usr/bin/composer
-
-# Копируем собранный фронтенд
-COPY --from=node-build /app/public/build /app/public/build
+# Копируем PHP и статику
+WORKDIR /var/www/html
+COPY --from=php-builder /usr/local/etc/php /usr/local/etc/php
+COPY --from=php-builder /usr/local/bin/php /usr/local/bin/php
+COPY --from=php-builder /usr/bin/composer /usr/bin/composer
+COPY --from=php-builder /var/www/html /var/www/html
+COPY --from=node-builder /var/www/html/public/build public/build
 
 # Права
-RUN chown -R www-data:www-data /app
+RUN chown -R www-data:www-data /var/www/html
 
 USER www-data
 
 EXPOSE 9000
-CMD ["php-fpm", "-F"]
+CMD ["php-fpm"]
