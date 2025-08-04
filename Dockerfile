@@ -6,44 +6,40 @@
 FROM debian:12.6 AS builder_php
 
 # Устанавливаем базовые пакеты и инструменты сборки PHP
-RUN apt-get update \
- && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
       build-essential ca-certificates curl git unzip \
       libssl-dev libzip-dev libpq-dev libpng-dev libxml2-dev \
       libonig-dev pkg-config autoconf libtool \
       zlib1g-dev libjpeg62-turbo-dev libfreetype6-dev \
       libgmp-dev libcurl4-gnutls-dev libicu-dev \
       libtidy-dev libxslt1-dev libevent-dev \
-      xz-utils fontconfig locales sqlite3 pkg-config \
- && locale-gen en_US.UTF-8
+      xz-utils fontconfig locales \
+      libsqlite3-dev
 
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
     PHP_VERSION=8.2.0
 
-WORKDIR /usr/src/php
-# Скачиваем и собираем PHP
-RUN curl -SL "https://www.php.net/distributions/php-$PHP_VERSION.tar.xz" -o php.tar.xz \
- && tar -xf php.tar.xz --strip-components=1 \
- && ./configure \
-      --prefix=/usr/local \
-      --with-pdo-pgsql=shared \
-      --with-pgsql=shared \
-      --with-openssl \
-      --enable-mbstring \
-      --with-zlib \
-      --enable-json \
-      --enable-fpm \
-      --with-curl \
-      --enable-zip \
-      --with-libedit \
-      --enable-intl \
-      --with-xsl \
-      --enable-soap \
-      --enable-bcmath \
- && make -j"$(nproc)" \
- && make install \
- && make clean
+WORKDIR /var/www/html
+COPY package*.json vite.config.js ./
+RUN npm ci
+# копируем CSS
+COPY resources/css resources/css
+COPY resources/js resources/js
+RUN npm run build
+
+# --- В builder (Debian) ---
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      build-essential ca-certificates curl git unzip \
+      libssl-dev libzip-dev libpq-dev libpng-dev libxml2-dev \
+      libonig-dev pkg-config autoconf libtool \
+      zlib1g-dev libjpeg62-turbo-dev libfreetype6-dev \
+      libgmp-dev libcurl4-gnutls-dev libicu-dev \
+      libtidy-dev libxslt1-dev libevent-dev \
+      xz-utils fontconfig locales \
+      libsqlite3-dev    # <--- добавлено
 
 # Устанавливаем Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer

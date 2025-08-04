@@ -53,7 +53,7 @@
     "src": "public/img/plug-yellow.png"
   },
   "resources/css/app.css": {
-    "file": "assets/app-CLhcFQy1.css",
+    "file": "assets/app-tn0RQdqM.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "names": [
@@ -61,7 +61,7 @@
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-BLE-ibhL.js",
+    "file": "assets/app-D6u9Vj2G.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
@@ -78,7 +78,8 @@
       "node_modules/leaflet/dist/leaflet-src.esm.js"
     ],
     "css": [
-      "assets/app-C5kqqz4z.css"
+      "assets/app-C5kqqz4z.css",
+      "assets/app-tn0RQdqM.css"
     ],
     "assets": [
       "assets/plug-green-DyW7fBD1.png",
