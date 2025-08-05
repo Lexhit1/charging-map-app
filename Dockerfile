@@ -7,7 +7,7 @@ FROM php:8.2-fpm-alpine AS php-base
 
 WORKDIR /var/www/html
 
-# Install only runtime libraries and enable OPCache
+# Install only runtime libraries and enable OPcache
 RUN apk add --no-cache \
         libzip \
         libpng \
@@ -26,7 +26,7 @@ FROM php:8.2-fpm-alpine AS php-deps
 
 WORKDIR /var/www/html
 
-# Install build tools, headers, PHP extensions and Xdebug, then clean up
+# Install build tools and system headers, then build and enable Xdebug
 RUN apk add --no-cache \
         autoconf \
         build-base \
@@ -46,13 +46,6 @@ RUN apk add --no-cache \
         bash \
         git \
         curl \
-    && docker-php-ext-install \
-        pdo_pgsql \
-        pdo_sqlite \
-        mbstring \
-        zip \
-        xml \
-        intl \
     && pecl install xdebug \
     && docker-php-ext-enable xdebug \
     && apk del \
@@ -71,11 +64,11 @@ RUN apk add --no-cache \
         pkgconfig \
     && rm -rf /var/cache/apk/*
 
-# Composer
+# Install Composer
 COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
-# Install PHP dependencies (production)
+# Install PHP dependencies (without dev, optimized)
 COPY composer.json composer.lock ./
 RUN composer install \
         --no-dev \
@@ -84,7 +77,7 @@ RUN composer install \
         --prefer-dist \
         --no-interaction
 
-# Copy application code
+# Copy application code and set permissions
 COPY . .
 RUN chmod -R ug+rw storage bootstrap/cache
 
@@ -114,7 +107,7 @@ COPY --from=php-deps /var/www/html /var/www/html
 # Copy frontend build artifacts
 COPY --from=frontend-build /var/www/html/public/build public/build
 
-# Disable Xdebug in final image
+# Disable Xdebug in production
 RUN docker-php-ext-disable xdebug || true
 
 # Laravel optimization
