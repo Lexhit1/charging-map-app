@@ -5,53 +5,45 @@
 ##############################################
 FROM php:8.2-fpm AS php-base
 
+# Устанавливаем рабочую директорию
 WORKDIR /var/www/html
 
 # Устанавливаем системные зависимости для PHP-расширений
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        libzip-dev libpng-dev libjpeg-dev libonig-dev libxml2-dev \
-        zip unzip git curl \
-        libpq-dev libedit-dev \
-        sqlite3 pkg-config libsqlite3-dev \
-    && docker-php-ext-install \
-        pdo_pgsql \
-        pdo_sqlite \
-        mbstring \
-        zip \
-        xml \
-        intl \
-    && pecl install xdebug \
-    && docker-php-ext-enable xdebug \
-    && rm -rf /var/lib/apt/lists/*
+ && apt-get install -y --no-install-recommends \
+      libzip-dev libpng-dev libjpeg-dev libonig-dev libxml2-dev \
+      zip unzip git curl \
+      libpq-dev libedit-dev \
+      sqlite3 pkg-config libsqlite3-dev \
+ && docker-php-ext-install \
+      pdo_pgsql \
+      pdo_sqlite \
+      mbstring \
+      zip \
+      xml \
+      intl \
+ && pecl install xdebug \
+ && docker-php-ext-enable xdebug \
+ && rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем Composer
+# Копируем бинарь Composer
 COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
 
 ##############################################
-# 2. Stage: Dependencies install             #
+# 2. Stage: Install PHP dependencies         #
 ##############################################
 FROM php-base AS php-deps
 
-WORKDIR /var/www/html
-
-# Копируем весь код приложения до установки зависимостей,
-# чтобы composer мог считать пути к artisan и прочим файлам
+# Копируем файлы композера и устанавливаем зависимости
 COPY composer.json composer.lock ./
-COPY . .
-
-RUN composer install \
-    --no-dev \
-    --optimize-autoloader \
-    --no-interaction
+RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 ##############################################
-# 3. Stage: Frontend build                   #
+# 3. Stage: Build frontend assets            #
 ##############################################
 FROM node:22 AS frontend-build
 
 WORKDIR /var/www/html
-
 COPY package.json package-lock.json vite.config.js ./
 RUN npm ci
 
@@ -59,20 +51,29 @@ COPY resources resources
 RUN npm run build
 
 ##############################################
-# 4. Stage: Final runtime                    #
+# 4. Stage: Final runtime image              #
 ##############################################
 FROM php:8.2-fpm AS runtime
 
 WORKDIR /var/www/html
 
-# Копируем PHP, зависимости и код
+# Копируем PHP и зависимости
 COPY --from=php-deps /var/www/html /var/www/html
+COPY --from=php-deps /usr/local/bin/php /usr/local/bin/php
+COPY --from=php-deps /usr/local/lib/php /usr/local/lib/php
+COPY --from=php-deps /usr/bin/composer /usr/bin/composer
 
 # Копируем собранный фронтенд
 COPY --from=frontend-build /var/www/html/public/build public/build
 
+# Копируем скрипт запуска
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Устанавливаем права
 RUN chown -R www-data:www-data /var/www/html
 
-EXPOSE 9000
-CMD ["php-fpm"]
+EXPOSE 10000
+
+# Запуск через entrypoint скрипт
+ENTRYPOINT ["docker-entrypoint.sh"]
