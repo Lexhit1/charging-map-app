@@ -48,12 +48,11 @@ class User extends Authenticatable
      * @param  string  $value
      * @return void
      */
-    public function setPasswordAttribute(string $value): void
+    public function setPasswordAttribute(string $value)
     {
         // Если пароль не пуст, хешируем его перед сохранением
-        if ($value !== '') 
-    
-                    $this->attributes['password']; 
+        if ($value != '') {
+        $this->attributes['password'] = bcrypt($value);
+    }
 }
-}  
-    
+}
