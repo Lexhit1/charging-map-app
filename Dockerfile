@@ -1,18 +1,36 @@
 # syntax=docker/dockerfile:1
 
 ##############################################
-# 1. Stage: Base (PHP + Composer)           #
+# 1. Stage: Base (runtime-only PHP)         #
 ##############################################
 FROM php:8.2-fpm-alpine AS php-base
 
-ENV COMPOSER_ALLOW_SUPERUSER=1
 WORKDIR /var/www/html
 
-# Устанавливаем build-зависимости и runtime-библиотеки
+# Устанавливаем только runtime-библиотеки
 RUN apk add --no-cache \
-        # build tools для phpize и pecl
+        libzip \
+        libpng \
+        libjpeg-turbo \
+        oniguruma \
+        libxml2 \
+        postgresql-libs \
+        sqlite-libs \
+    && docker-php-ext-install opcache \
+    && docker-php-ext-enable opcache
+
+##############################################
+# 2. Stage: Build PHP dependencies (+ Xdebug)#
+##############################################
+FROM php:8.2-fpm-alpine AS php-deps
+
+WORKDIR /var/www/html
+
+# Устанавливаем build-инструменты для сборки PECL-модулей
+RUN apk add --no-cache \
         autoconf \
         build-base \
+        linux-headers \
         icu-dev \
         libzip-dev \
         libpng-dev \
@@ -28,22 +46,12 @@ RUN apk add --no-cache \
         bash \
         git \
         curl \
-    && docker-php-ext-install \
-        pdo_pgsql \
-        pdo_sqlite \
-        mbstring \
-        zip \
-        xml \
-        intl \
     && pecl install xdebug \
     && docker-php-ext-enable xdebug \
-    # устанавливаем Composer
-    && wget -qO /usr/local/bin/composer https://getcomposer.org/composer-stable.phar \
-    && chmod +x /usr/local/bin/composer \
-    # очищаем кеш apk и build-зависимости (кроме runtime libs)
     && apk del \
         autoconf \
         build-base \
+        linux-headers \
         icu-dev \
         libzip-dev \
         libpng-dev \
@@ -56,14 +64,11 @@ RUN apk add --no-cache \
         pkgconfig \
     && rm -rf /var/cache/apk/*
 
-##############################################
-# 2. Stage: Build PHP dependencies          #
-##############################################
-FROM php-base AS php-deps
+# Composer
+COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
+ENV COMPOSER_ALLOW_SUPERUSER=1
 
-WORKDIR /var/www/html
-
-# Копируем и устанавливаем PHP-зависимости
+# Устанавливаем PHP-зависимости
 COPY composer.json composer.lock ./
 RUN composer install \
         --no-dev \
@@ -72,7 +77,7 @@ RUN composer install \
         --prefer-dist \
         --no-interaction
 
-# Копируем исходники приложения
+# Копируем приложение
 COPY . .
 RUN chmod -R ug+rw storage bootstrap/cache
 
@@ -92,32 +97,20 @@ RUN npm run build
 ##############################################
 # 4. Stage: Final runtime image              #
 ##############################################
-FROM php:8.2-fpm-alpine AS runtime
+FROM php-base AS runtime
 
 WORKDIR /var/www/html
 
-# Устанавливаем только необходимые runtime-библиотеки
-RUN apk add --no-cache \
-        libzip \
-        libpng \
-        libjpeg-turbo \
-        oniguruma \
-        libxml2 \
-        postgresql-libs \
-        sqlite-libs \
-    && docker-php-ext-install opcache \
-    && docker-php-ext-enable opcache
-
-# Копируем PHP-приложение и Laravel-кеш
+# Копируем PHP-приложение из php-deps (без Xdebug)
 COPY --from=php-deps /var/www/html /var/www/html
 
 # Копируем фронтенд-сборку
 COPY --from=frontend-build /var/www/html/public/build public/build
 
-# Отключаем Xdebug в продакшне
-RUN docker-php-ext-disable xdebug
+# Отключаем Xdebug на всякий случай
+RUN docker-php-ext-disable xdebug || true
 
-# Генерируем Laravel-оптимизации на этапе сборки
+# Laravel optimization
 RUN php artisan config:cache \
  && php artisan route:cache \
  && php artisan view:cache \
