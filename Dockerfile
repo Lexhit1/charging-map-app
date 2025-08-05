@@ -13,8 +13,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
          libzip-dev libpng-dev libjpeg-dev libonig-dev libxml2-dev \
          zip unzip git curl \
-         libpq-dev libedit-dev \
-         sqlite3 pkg-config libsqlite3-dev \
+         libpq-dev sqlite3 pkg-config libsqlite3-dev libedit-dev \
     && docker-php-ext-install \
          pdo_pgsql \
          pdo_sqlite \
@@ -36,7 +35,7 @@ FROM php-base AS php-deps
 
 WORKDIR /var/www/html
 
-# Копируем composer-файлы и устанавливаем зависимости без скриптов (чтобы не вызывался artisan)
+# Копируем только файлы composer и устанавливаем зависимости без скриптов
 COPY composer.json composer.lock ./
 ENV COMPOSER_ALLOW_SUPERUSER=1
 RUN composer install \
@@ -45,7 +44,7 @@ RUN composer install \
     --no-scripts \
     --no-interaction
 
-# Копируем всё приложение (для artisan, миграций и т.д.)
+# Копируем весь остальной код приложения
 COPY . .
 
 ##############################################
@@ -55,11 +54,11 @@ FROM node:22 AS frontend-build
 
 WORKDIR /var/www/html
 
-# Устанавливаем зависимости фронтенда
+# Копируем package-файлы и устанавливаем npm-зависимости
 COPY package.json package-lock.json vite.config.js ./
 RUN npm ci
 
-# Собираем фронтенд-ассеты
+# Копируем исходники фронтенда и собираем ассеты
 COPY resources resources
 RUN npm run build
 
@@ -70,7 +69,7 @@ FROM php-base AS runtime
 
 WORKDIR /var/www/html
 
-# Копируем PHP-приложение и его зависимости
+# Копируем собранное PHP-приложение с зависимостями
 COPY --from=php-deps /var/www/html /var/www/html
 COPY --from=php-deps /usr/local/bin/php /usr/local/bin/php
 COPY --from=php-deps /usr/local/lib/php /usr/local/lib/php
@@ -79,13 +78,14 @@ COPY --from=php-deps /usr/bin/composer /usr/bin/composer
 # Копируем собранный фронтенд
 COPY --from=frontend-build /var/www/html/public/build public/build
 
-# Копируем и делаем исполняемым entrypoint
+# Копируем entrypoint и делаем его исполняемым
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Устанавливаем права на каталог приложения
+# Устанавливаем права на директорию приложения
 RUN chown -R www-data:www-data /var/www/html
 
+# Порт PHP-FPM
 EXPOSE 10000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
