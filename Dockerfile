@@ -1,75 +1,71 @@
-# syntax=docker/dockerfile:1
+# ───────────────────────────────────────────────────────────────
+# Этап 1. Собираем PHP-базу с Xdebug для девелопмента
+# ───────────────────────────────────────────────────────────────
+FROM php:8.1-fpm AS php-base
 
-##############################################
-# 1. Stage: PHP + Composer                  #
-##############################################
-FROM php:8.2-fpm AS php-base
-
-WORKDIR /var/www/html
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-         libzip-dev libpng-dev libjpeg-dev libonig-dev libxml2-dev \
-         zip unzip git curl \
-         libpq-dev libedit-dev sqlite3 pkg-config libsqlite3-dev \
-    && docker-php-ext-install pdo_pgsql pdo_sqlite mbstring zip xml intl \
+# Устанавливаем системные зависимости, Composer и PECL для Xdebug
+RUN apt-get update && apt-get install -y \
+        git \
+        unzip \
+        libzip-dev \
+        zip \
     && pecl install xdebug \
     && docker-php-ext-enable xdebug \
+    && docker-php-ext-install zip pdo pdo_mysql \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
+# Устанавливаем Composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-##############################################
-# 2. Stage: Install PHP dependencies         #
-##############################################
+WORKDIR /var/www/html
+
+# ───────────────────────────────────────────────────────────────
+# Этап 2. Устанавливаем PHP-зависимости
+# ───────────────────────────────────────────────────────────────
 FROM php-base AS php-deps
 
-WORKDIR /var/www/html
-
+# Копируем только файлы зависимостей для быстрого билд-кеша
 COPY composer.json composer.lock ./
-ENV COMPOSER_ALLOW_SUPERUSER=1
-RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
 
+# Устанавливаем зависимости через Composer
+RUN composer install --no-dev --optimize-autoloader --no-interaction --no-progress
+
+# Копируем весь проект
 COPY . .
 
-RUN chmod -R ug+rw storage bootstrap/cache
+# Корректируем права
+RUN chmod -R 755 /var/www/html
 
-##############################################
-# 3. Stage: Build frontend assets            #
-##############################################
-FROM node:22 AS frontend-build
+# ───────────────────────────────────────────────────────────────
+# Этап 3. Собираем фронтенд (например, Vue/React)
+# ───────────────────────────────────────────────────────────────
+FROM node:18-alpine AS frontend-build
 
-WORKDIR /var/www/html
-
-COPY package.json package-lock.json vite.config.js ./
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
-
-COPY resources resources
+COPY frontend/. .
 RUN npm run build
 
-##############################################
-# 4. Stage: Final runtime image              #
-##############################################
-FROM php-base AS runtime
+# ───────────────────────────────────────────────────────────────
+# Этап 4. Финальный образ без Xdebug
+# ───────────────────────────────────────────────────────────────
+FROM php:8.1-fpm AS runtime
+
+# Копируем PHP-код и автозагрузчик
+COPY --from=php-deps /var/www/html /var/www/html
+
+# Копируем собранный фронтенд в папку public (при необходимости)
+COPY --from=frontend-build /app/dist /var/www/html/public
 
 WORKDIR /var/www/html
 
-COPY --from=php-deps /var/www/html /var/www/html
-COPY --from=php-deps /usr/local/bin/php /usr/local/bin/php
-COPY --from=php-deps /usr/local/lib/php /usr/local/lib/php
-COPY --from=php-deps /usr/bin/composer /usr/bin/composer
+# Удаляем Xdebug из финального образа (disable)
+RUN rm -f /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
 
-COPY --from=frontend-build /var/www/html/public/build public/build
-
-# Отключаем Xdebug в финальном образе
-RUN docker-php-ext-disable xdebug
-
+# Копируем скрипт точки входа
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
-RUN chown -R www-data:www-data /var/www/html
-
-EXPOSE 10000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["php-fpm"]
