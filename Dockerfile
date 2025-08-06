@@ -7,26 +7,25 @@ FROM php:8.2-fpm-alpine AS php-base
 
 WORKDIR /var/www/html
 
-# Устанавливаем runtime-библиотеки и PHP-расширения
 RUN apk add --no-cache \
         libzip \
         libpng \
         libjpeg-turbo \
         oniguruma \
         libxml2 \
-        icu-libs \
         postgresql-libs \
         sqlite-libs \
+        postgresql-dev \
     && docker-php-ext-install \
         pdo_pgsql \
         pdo_sqlite \
-        mbstring \
         zip \
         xml \
         intl \
         opcache \
-    && docker-php-ext-enable \
-        opcache
+    && docker-php-ext-enable opcache \
+    && apk del postgresql-dev \
+    && rm -rf /var/cache/apk/*
 
 ##############################################
 # 2. Stage: Build PHP dependencies (+ Xdebug)#
@@ -72,7 +71,6 @@ RUN apk add --no-cache \
         pkgconfig \
     && rm -rf /var/cache/apk/*
 
-# Composer
 COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
@@ -107,22 +105,16 @@ FROM php-base AS runtime
 
 WORKDIR /var/www/html
 
-# Копируем PHP-приложение (без Xdebug)
 COPY --from=php-deps /var/www/html /var/www/html
-
-# Копируем фронтенд-сборку
 COPY --from=frontend-build /var/www/html/public/build public/build
 
-# Отключаем Xdebug на всякий случай
 RUN docker-php-ext-disable xdebug || true
 
-# Laravel optimization
 RUN php artisan config:cache \
  && php artisan route:cache \
  && php artisan view:cache \
  && chmod -R 755 bootstrap/cache storage
 
-# Точка входа и права
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 USER www-data:www-data
