@@ -7,33 +7,27 @@ FROM php:8.2-fpm-alpine AS php-base
 
 WORKDIR /var/www/html
 
+# Install only runtime libraries
 RUN apk add --no-cache \
         libzip \
         libpng \
         libjpeg-turbo \
         oniguruma \
         libxml2 \
+        icu-libs \
         postgresql-libs \
         sqlite-libs \
-        postgresql-dev \
-    && docker-php-ext-install \
-        pdo_pgsql \
-        pdo_sqlite \
-        zip \
-        xml \
-        intl \
-        opcache \
-    && docker-php-ext-enable opcache \
-    && apk del postgresql-dev \
-    && rm -rf /var/cache/apk/*
+    && docker-php-ext-install opcache \
+    && docker-php-ext-enable opcache
 
 ##############################################
-# 2. Stage: Build PHP dependencies (+ Xdebug)#
+# 2. Stage: Build PHP extensions (+ Xdebug)  #
 ##############################################
 FROM php:8.2-fpm-alpine AS php-deps
 
 WORKDIR /var/www/html
 
+# Install build tools and development libraries
 RUN apk add --no-cache \
         autoconf \
         build-base \
@@ -44,17 +38,31 @@ RUN apk add --no-cache \
         libjpeg-turbo-dev \
         oniguruma-dev \
         libxml2-dev \
+        icu-dev \
         postgresql-dev \
         sqlite-dev \
         libedit-dev \
-        pkgconfig \
+        pkgconf \
         zip \
         unzip \
         bash \
         git \
         curl \
+    \
+    # Build and enable Xdebug
     && pecl install xdebug \
     && docker-php-ext-enable xdebug \
+    \
+    # Install PHP extensions
+    && docker-php-ext-install \
+        pdo_pgsql \
+        pdo_sqlite \
+        mbstring \
+        zip \
+        xml \
+        intl \
+    \
+    # Clean up build dependencies
     && apk del \
         autoconf \
         build-base \
@@ -68,12 +76,15 @@ RUN apk add --no-cache \
         postgresql-dev \
         sqlite-dev \
         libedit-dev \
-        pkgconfig \
+        pkgconf \
+        unzip \
     && rm -rf /var/cache/apk/*
 
+# Copy composer from official image
 COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
+# Install PHP dependencies (production)
 COPY composer.json composer.lock ./
 RUN composer install \
         --no-dev \
@@ -82,6 +93,7 @@ RUN composer install \
         --prefer-dist \
         --no-interaction
 
+# Copy application and set permissions
 COPY . .
 RUN chmod -R ug+rw storage bootstrap/cache
 
@@ -105,16 +117,22 @@ FROM php-base AS runtime
 
 WORKDIR /var/www/html
 
+# Copy PHP application (without Xdebug) and vendor files
 COPY --from=php-deps /var/www/html /var/www/html
+
+# Copy frontend build artifacts
 COPY --from=frontend-build /var/www/html/public/build public/build
 
+# Ensure Xdebug is disabled in runtime
 RUN docker-php-ext-disable xdebug || true
 
+# Laravel optimizations
 RUN php artisan config:cache \
  && php artisan route:cache \
  && php artisan view:cache \
  && chmod -R 755 bootstrap/cache storage
 
+# Entrypoint and permissions
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 USER www-data:www-data
