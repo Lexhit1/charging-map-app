@@ -1,11 +1,39 @@
 # syntax=docker/dockerfile:1
 
 ##############################################
-# 1. Stage: Build PHP with extensions         #
+# 1. Stage: Base image (runtime PHP)         #
+##############################################
+FROM php:8.2-fpm-alpine AS php-base
+
+# Устанавливаем runtime-библиотеки и PHP-расширения
+RUN apk add --no-cache \
+        libzip \
+        libpng \
+        libjpeg-turbo \
+        oniguruma \
+        libxml2 \
+        icu-libs \
+        postgresql-libs \
+        sqlite-libs \
+    && docker-php-ext-install \
+        pdo_pgsql \
+        pdo_sqlite \
+        zip \
+        xml \
+        intl \
+        opcache \
+    && docker-php-ext-enable opcache
+
+WORKDIR /var/www/html
+
+##############################################
+# 2. Stage: Dependencies (composer + Xdebug) #
 ##############################################
 FROM php:8.2-fpm-alpine AS php-deps
 
-# Устанавливаем build-зависимости + runtime-библиотеки
+WORKDIR /var/www/html
+
+# Устанавливаем build-зависимости для компиляции расширений
 RUN apk add --no-cache \
         autoconf \
         build-base \
@@ -18,17 +46,7 @@ RUN apk add --no-cache \
         libxml2-dev \
         postgresql-dev \
         sqlite-dev \
-        bash \
-        git \
-        curl \
-    && docker-php-ext-install \
-        pdo_pgsql \
-        pdo_sqlite \
-        mbstring \
-        zip \
-        xml \
-        intl \
-        opcache \
+        pkgconfig \
     && pecl install xdebug \
     && docker-php-ext-enable xdebug \
     && apk del \
@@ -43,75 +61,67 @@ RUN apk add --no-cache \
         libxml2-dev \
         postgresql-dev \
         sqlite-dev \
+        pkgconfig \
     && rm -rf /var/cache/apk/*
 
-WORKDIR /var/www/html
-
-# Composer без dev-зависимостей
+# Устанавливаем Composer
 COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
 ENV COMPOSER_ALLOW_SUPERUSER=1
+
+# Устанавливаем PHP-зависимости
 COPY composer.json composer.lock ./
 RUN composer install \
         --no-dev \
         --optimize-autoloader \
         --no-interaction
 
-# Копируем весь код и настраиваем права
+# Копируем приложение и выставляем права
 COPY . .
 RUN chmod -R ug+rw storage bootstrap/cache
 
 ##############################################
-# 2. Stage: Build frontend assets            #
+# 3. Stage: Frontend build (Node.js)         #
 ##############################################
 FROM node:22-alpine AS frontend-build
 
 WORKDIR /var/www/html
+
+# Устанавливаем фронтенд-зависимости
 COPY package.json package-lock.json vite.config.js ./
 RUN npm ci --ignore-scripts
+
+# Собираем ассеты
 COPY resources resources
 RUN npm run build
 
 ##############################################
-# 3. Stage: Final runtime image              #
+# 4. Stage: Final image (runtime)            #
 ##############################################
-FROM php:8.2-fpm-alpine AS php-base
-
-# Устанавливаем только runtime-библиотеки
-RUN apk add --no-cache \
-        libzip \
-        libpng \
-        libjpeg-turbo \
-        oniguruma \
-        libxml2 \
-        icu-libs \
-        postgresql-libs \
-        sqlite-libs
+FROM php-base AS runtime
 
 WORKDIR /var/www/html
 
-# Копируем PHP-приложение из php-deps (включая собранные расширения)
-COPY --from=php-deps /usr/local/lib/php/extensions /usr/local/lib/php/extensions
-COPY --from=php-deps /usr/local/etc/php/conf.d /usr/local/etc/php/conf.d
+# Копируем PHP-приложение из стадии deps (без Xdebug)
 COPY --from=php-deps /var/www/html /var/www/html
 
 # Копируем фронтенд-сборку
 COPY --from=frontend-build /var/www/html/public/build public/build
 
-# Отключаем Xdebug в рантайме
+# Отключаем Xdebug на всякий случай
 RUN docker-php-ext-disable xdebug || true
 
-# Laravel-кэширование и права
+# Оптимизируем Laravel
 RUN php artisan config:cache \
  && php artisan route:cache \
  && php artisan view:cache \
  && chmod -R 755 bootstrap/cache storage
 
-# Точка входа и пользователь
+# Добавляем точку входа
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 USER www-data:www-data
 
 EXPOSE 10000
-
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["php-fpm"]
