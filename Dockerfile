@@ -7,17 +7,17 @@ FROM php:8.2-fpm-alpine AS php-base
 
 WORKDIR /var/www/html
 
-# Устанавливаем runtime-библиотеки и расширения PHP
 RUN apk add --no-cache \
         libzip \
         libpng \
         libjpeg-turbo \
         oniguruma \
         libxml2 \
-        icu-libs \
         postgresql-libs \
         sqlite-libs \
+    && apk add --no-cache --virtual .phpize-deps \
         postgresql-dev \
+        sqlite-dev \
     && docker-php-ext-install \
         pdo_pgsql \
         pdo_sqlite \
@@ -26,17 +26,16 @@ RUN apk add --no-cache \
         intl \
         opcache \
     && docker-php-ext-enable opcache \
-    && apk del postgresql-dev \
+    && apk del .phpize-deps \
     && rm -rf /var/cache/apk/*
 
 ##############################################
-# 2. Stage: Build PHP dependencies (+ Xdebug)#
+# 2. Stage: Build PHP dependencies (+Xdebug) #
 ##############################################
 FROM php:8.2-fpm-alpine AS php-deps
 
 WORKDIR /var/www/html
 
-# Устанавливаем инструменты для сборки PECL-модулей
 RUN apk add --no-cache \
         autoconf \
         build-base \
@@ -78,7 +77,6 @@ RUN apk add --no-cache \
 COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
-# Устанавливаем PHP-зависимости
 COPY composer.json composer.lock ./
 RUN composer install \
         --no-dev \
@@ -87,7 +85,6 @@ RUN composer install \
         --prefer-dist \
         --no-interaction
 
-# Копируем приложение
 COPY . .
 RUN chmod -R ug+rw storage bootstrap/cache
 
@@ -111,24 +108,19 @@ FROM php-base AS runtime
 
 WORKDIR /var/www/html
 
-# Копируем PHP-приложение из php-deps (без Xdebug)
 COPY --from=php-deps /var/www/html /var/www/html
-
-# Копируем фронтенд-сборку
 COPY --from=frontend-build /var/www/html/public/build public/build
 
-# Отключаем Xdebug на всякий случай
 RUN docker-php-ext-disable xdebug || true
 
-# Laravel optimization
 RUN php artisan config:cache \
  && php artisan route:cache \
  && php artisan view:cache \
  && chmod -R 755 bootstrap/cache storage
 
-# Точка входа и права
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 USER www-data:www-data
 
 EXPOSE 10000
