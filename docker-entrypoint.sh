@@ -1,14 +1,14 @@
-#!/usr/bin/env bash
+#!/bin/sh
 set -e
 
-# Пример динамической подстановки переменных окружения
-: "${APP_ENV:=production}"
-export APP_ENV
+# Ждём готовности базы
+until php artisan migrate:status > /dev/null 2>&1; do
+  echo "Waiting for database..."
+  sleep 2
+done
 
-# При необходимости запустите миграции, seed, сборку кеша и т.п.
-# php artisan migrate --force
-# php artisan config:cache
-# php artisan route:cache
+# Запускаем миграции
+php artisan migrate --force
 
-# Запуск PHP-FPM
+# Запускаем основную команду
 exec "$@"

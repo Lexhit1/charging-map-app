@@ -7,7 +7,7 @@ FROM php:8.2-fpm-alpine AS php-base
 
 WORKDIR /var/www/html
 
-# Устанавливаем только runtime-библиотеки
+# Устанавливаем runtime-библиотеки и расширения PHP
 RUN apk add --no-cache \
         libzip \
         libpng \
@@ -17,12 +17,17 @@ RUN apk add --no-cache \
         icu-libs \
         postgresql-libs \
         sqlite-libs \
+        postgresql-dev \
     && docker-php-ext-install \
+        pdo_pgsql \
+        pdo_sqlite \
         zip \
         xml \
         intl \
         opcache \
-    && docker-php-ext-enable opcache
+    && docker-php-ext-enable opcache \
+    && apk del postgresql-dev \
+    && rm -rf /var/cache/apk/*
 
 ##############################################
 # 2. Stage: Build PHP dependencies (+ Xdebug)#
@@ -31,7 +36,7 @@ FROM php:8.2-fpm-alpine AS php-deps
 
 WORKDIR /var/www/html
 
-# Устанавливаем build-инструменты для сборки PHP-расширений и Xdebug
+# Устанавливаем инструменты для сборки PECL-модулей
 RUN apk add --no-cache \
         autoconf \
         build-base \
@@ -44,19 +49,13 @@ RUN apk add --no-cache \
         libxml2-dev \
         postgresql-dev \
         sqlite-dev \
+        libedit-dev \
         pkgconfig \
         zip \
         unzip \
         bash \
         git \
         curl \
-    && docker-php-ext-install \
-        pdo_pgsql \
-        pdo_sqlite \
-        zip \
-        xml \
-        intl \
-        opcache \
     && pecl install xdebug \
     && docker-php-ext-enable xdebug \
     && apk del \
@@ -71,6 +70,7 @@ RUN apk add --no-cache \
         libxml2-dev \
         postgresql-dev \
         sqlite-dev \
+        libedit-dev \
         pkgconfig \
     && rm -rf /var/cache/apk/*
 
@@ -78,7 +78,7 @@ RUN apk add --no-cache \
 COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
-# Устанавливаем PHP-зависимости проекта
+# Устанавливаем PHP-зависимости
 COPY composer.json composer.lock ./
 RUN composer install \
         --no-dev \
@@ -86,6 +86,10 @@ RUN composer install \
         --no-scripts \
         --prefer-dist \
         --no-interaction
+
+# Копируем приложение
+COPY . .
+RUN chmod -R ug+rw storage bootstrap/cache
 
 ##############################################
 # 3. Stage: Build frontend assets            #
