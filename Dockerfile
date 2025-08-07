@@ -7,7 +7,7 @@ FROM php:8.2-fpm-alpine AS php-base
 
 WORKDIR /var/www/html
 
-# Устанавливаем runtime-библиотеки и зависимости для сборки pdo_pgsql и pdo_sqlite
+# Устанавливаем runtime-библиотеки и нужные dev-пакеты для сборки расширений, затем удаляем dev-пакеты
 RUN apk add --no-cache \
         libzip \
         libpng \
@@ -17,14 +17,12 @@ RUN apk add --no-cache \
         icu-libs \
         postgresql-libs \
         sqlite-libs \
-        # пакеты разработки для pdo_pgsql и pdo_sqlite
+        pkgconfig \
         postgresql-dev \
         sqlite-dev \
-        pkgconfig \
     && docker-php-ext-install \
         pdo_pgsql \
         pdo_sqlite \
-        mbstring \
         zip \
         xml \
         intl \
@@ -33,7 +31,6 @@ RUN apk add --no-cache \
     && apk del \
         postgresql-dev \
         sqlite-dev \
-        pkgconfig \
     && rm -rf /var/cache/apk/*
 
 ##############################################
@@ -43,6 +40,7 @@ FROM php:8.2-fpm-alpine AS php-deps
 
 WORKDIR /var/www/html
 
+# Устанавливаем build-инструменты для сборки PECL-модулей
 RUN apk add --no-cache \
         autoconf \
         build-base \
@@ -84,6 +82,7 @@ RUN apk add --no-cache \
 COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
+# Устанавливаем PHP-зависимости
 COPY composer.json composer.lock ./
 RUN composer install \
         --no-dev \
@@ -131,9 +130,9 @@ RUN php artisan config:cache \
  && php artisan view:cache \
  && chmod -R 755 bootstrap/cache storage
 
+# Точка входа и права
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
 USER www-data:www-data
 
 EXPOSE 10000
