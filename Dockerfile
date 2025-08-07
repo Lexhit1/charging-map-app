@@ -1,4 +1,4 @@
-\# 1\. Stage: Base PHP image with common extensions
+
 FROM php:8\.3\-fpm\-alpine AS php\-base
 
 \# Install PHP extensions dependencies and Composer
