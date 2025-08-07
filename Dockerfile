@@ -24,11 +24,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 3. Устанавливаем расширения PHP
-#    - docker-php-ext-configure gd --with-jpeg --with-png --with-webp: Конфигурируем расширение GD для поддержки JPEG, PNG и WebP.
-#    - docker-php-ext-install -j$(nproc) gd pdo_mysql zip: Устанавливаем расширения GD (для обработки изображений), pdo_mysql (для работы с базой данных MySQL) и zip.
+#    Мы уже установили нужные библиотеки (libpng-dev, libjpeg-dev, libwebp-dev) выше.
+#    Теперь просто устанавливаем расширения: gd (для обработки изображений), pdo_mysql (для работы с базой данных MySQL) и zip.
 #    -j$(nproc) использует все доступные ядра процессора для ускорения компиляции.
-RUN docker-php-ext-configure gd --with-jpeg --with-png --with-webp \
-    && docker-php-ext-install -j$(nproc) gd pdo_mysql zip
+RUN docker-php-ext-install -j$(nproc) gd pdo_mysql zip
 
 # 4. Устанавливаем рабочую директорию внутри контейнера
 #    Все последующие команды будут выполняться относительно этой директории.
