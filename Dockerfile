@@ -7,7 +7,7 @@ FROM php:8.2-fpm-alpine AS php-base
 
 WORKDIR /var/www/html
 
-# Устанавливаем runtime-библиотеки и нужные dev-пакеты для сборки расширений, затем удаляем dev-пакеты
+# Устанавливаем runtime-библиотеки и build-зависимости только для ext-install
 RUN apk add --no-cache \
         libzip \
         libpng \
@@ -17,7 +17,7 @@ RUN apk add --no-cache \
         icu-libs \
         postgresql-libs \
         sqlite-libs \
-        pkgconfig \
+    && apk add --no-cache --virtual .phpize-deps \
         postgresql-dev \
         sqlite-dev \
     && docker-php-ext-install \
@@ -28,9 +28,7 @@ RUN apk add --no-cache \
         intl \
         opcache \
     && docker-php-ext-enable opcache \
-    && apk del \
-        postgresql-dev \
-        sqlite-dev \
+    && apk del .phpize-deps \
     && rm -rf /var/cache/apk/*
 
 ##############################################
@@ -40,7 +38,7 @@ FROM php:8.2-fpm-alpine AS php-deps
 
 WORKDIR /var/www/html
 
-# Устанавливаем build-инструменты для сборки PECL-модулей
+# Устанавливаем build-инструменты + Xdebug
 RUN apk add --no-cache \
         autoconf \
         build-base \
