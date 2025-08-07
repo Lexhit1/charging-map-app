@@ -1,79 +1,77 @@
 # Dockerfile
 
-# Используем базовый образ PHP с FPM для Alpine Linux
-FROM php:8.2-fpm-alpine
+# 1. Выбираем базовый образ PHP с FPM (FastCGI Process Manager)
+#    Это образ, который содержит PHP и все необходимое для его запуска.
+#    Мы используем версию 8.2.
+FROM php:8.2-fpm
 
-# Устанавливаем Nginx
-RUN apk add --no-cache nginx
-
-# Устанавливаем системные зависимости и расширения PHP
-# build-base: содержит компиляторы, необходимые для сборки некоторых PHP-расширений
-# git: для Composer, если он будет клонировать что-то
-# unzip: для распаковки архивов (используется Composer)
-# libxml2-dev, libpng-dev, libjpeg-turbo-dev, freetype-dev: для расширений xml, gd
-# icu-dev, oniguruma-dev: для расширений intl, mbstring
-# postgresql-dev, sqlite-dev: для pdo_pgsql, pdo_sqlite
-# pkgconfig: инструмент для поиска библиотек
-# libzip-dev: *ЭТО ТОТ ПАКЕТ, КОТОРЫЙ НУЖЕН ДЛЯ РАСШИРЕНИЯ 'zip'*
-RUN apk add --no-cache \
-    build-base \
+# 2. Устанавливаем системные зависимости
+#    Сначала обновляем список пакетов (apt-get update), затем устанавливаем необходимые пакеты (-y для автоматического подтверждения).
+#    - nginx: Веб-сервер, который будет обслуживать статические файлы и передавать запросы PHP-FPM.
+#    - supervisor: Менеджер процессов, который будет следить за Nginx и PHP-FPM и перезапускать их в случае сбоя.
+#    - git, unzip: Нужны для установки зависимостей Composer.
+#    - libpng-dev, libjpeg-dev, libwebp-dev, libzip-dev: Библиотеки, необходимые для установки расширений PHP (например, GD для работы с изображениями, Zip).
+#    После установки удаляем кэш пакетов (rm -rf /var/lib/apt/lists/*), чтобы уменьшить размер образа.
+RUN apt-get update && apt-get install -y \
+    nginx \
+    supervisor \
     git \
     unzip \
-    libxml2-dev \
     libpng-dev \
-    libjpeg-turbo-dev \
-    freetype-dev \
-    icu-dev \
-    oniguruma-dev \
-    postgresql-dev \
-    sqlite-dev \
-    pkgconfig \
+    libjpeg-dev \
+    libwebp-dev \
     libzip-dev \
-  && docker-php-ext-configure gd --with-freetype --with-jpeg \
-  && docker-php-ext-install \
-    pdo_pgsql \
-    pdo_sqlite \
-    mbstring \
-    zip \
-    xml \
-    intl \
-    gd \
-    opcache \
-  && docker-php-ext-enable opcache
+    && rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+# 3. Устанавливаем расширения PHP
+#    - docker-php-ext-configure gd --with-jpeg --with-png --with-webp: Конфигурируем расширение GD для поддержки JPEG, PNG и WebP.
+#    - docker-php-ext-install -j$(nproc) gd pdo_mysql zip: Устанавливаем расширения GD (для обработки изображений), pdo_mysql (для работы с базой данных MySQL) и zip.
+#    -j$(nproc) использует все доступные ядра процессора для ускорения компиляции.
+RUN docker-php-ext-configure gd --with-jpeg --with-png --with-webp \
+    && docker-php-ext-install -j$(nproc) gd pdo_mysql zip
 
-# Устанавливаем рабочую директорию
+# 4. Устанавливаем рабочую директорию внутри контейнера
+#    Все последующие команды будут выполняться относительно этой директории.
 WORKDIR /var/www/html
 
-# Копируем файлы проекта
-# Важно: если у тебя есть .dockerignore, он будет игнорировать ненужные файлы
-COPY . .
+# 5. Копируем исходный код вашего приложения в контейнер
+#    Точка '.' означает "все файлы и папки из текущей директории на вашем компьютере, где находится Dockerfile".
+#    /var/www/html - это директория внутри контейнера.
+COPY . /var/www/html
 
-# Устанавливаем зависимости Laravel
-# --no-dev: не устанавливать зависимости для разработки
-# --optimize-autoloader: оптимизировать автозагрузку классов
-# --no-interaction: не задавать вопросы в процессе установки
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+# 6. Устанавливаем зависимости Composer
+#    Сначала копируем исполняемый файл Composer из официального образа Composer.
+#    Затем запускаем composer install для установки всех PHP-зависимостей вашего проекта.
+#    --no-dev: Не устанавливать зависимости для разработки.
+#    --optimize-autoloader: Оптимизировать автозагрузчик классов для продакшена.
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+RUN composer install --no-dev --optimize-autoloader
 
-# Настраиваем права доступа для папок storage и bootstrap/cache
-# Это необходимо, чтобы Laravel мог записывать файлы (логи, кэш, сессии)
-RUN chown -R www-data:www-data /var/www/html/storage \
-    && chown -R www-data:www-data /var/www/html/bootstrap/cache \
-    && chmod -R 775 /var/www/html/storage \
-    && chmod -R 775 /var/www/html/bootstrap/cache
+# 7. Настраиваем права доступа
+#    - chown -R www-data:www-data /var/www/html: Изменяем владельца всех файлов и папок в /var/www/html на пользователя www-data,
+#      под которым обычно работает Nginx и PHP-FPM.
+#    - chmod -R 755 /var/www/html/storage: Устанавливаем права 755 для папки storage (чтение, запись, выполнение для владельца; чтение, выполнение для группы и других).
+#      Это важно, так как Laravel пишет логи и кэш в эту папку.
+#    - chmod -R 755 /var/www/html/bootstrap/cache: То же самое для папки bootstrap/cache.
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html/storage \
+    && chmod -R 755 /var/www/html/bootstrap/cache
 
-# Копируем конфигурацию Nginx
-# Убедись, что файл nginx.conf находится в папке nginx/ относительно корня твоего проекта
-COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
+# 8. Копируем файлы конфигурации Nginx и Supervisor
+#    - supervisord.conf: Конфигурация Supervisor. Копируем ее в стандартную директорию Supervisor.
+#    - nginx.conf: Конфигурация Nginx. Копируем ее в sites-available, а затем создаем символическую ссылку в sites-enabled,
+#      чтобы Nginx ее подхватил.
+#    - rm -f /etc/nginx/sites-enabled/default: Удаляем стандартную символическую ссылку Nginx, если она есть, чтобы не конфликтовать с нашей.
+COPY supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY nginx/nginx.conf /etc/nginx/sites-available/default.conf
+RUN ln -sf /etc/nginx/sites-available/default.conf /etc/nginx/sites-enabled/default.conf \
+    && rm -f /etc/nginx/sites-enabled/default
 
-# Копируем конфигурацию Supervisor
-# Убедись, что файл supervisord.conf находится в папке supervisor/ относительно корня твоего проекта
-COPY supervisor/supervisord.conf /etc/supervisord.conf
-
-# Открываем порт 80, на котором будет работать Nginx
+# 9. Открываем порт 80
+#    Это порт, на котором будет работать Nginx.
 EXPOSE 80
 
-# Команда запуска контейнера: используем Supervisor для запуска Nginx и PHP-FPM одновременно
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+# 10. Команда, которая будет запускаться при старте контейнера
+#     Запускаем supervisord в режиме "без демона" (-n), чтобы он оставался на переднем плане.
+#     Supervisor будет управлять Nginx и PHP-FPM.
+CMD ["/usr/bin/supervisord", "-n"]
