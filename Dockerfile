@@ -9,16 +9,16 @@ RUN apk add \-\-no\-cache \\
     curl \\
     bash \\
     \# PHP extension build dependencies:
-    libzip\-dev \\       \# Для расширения 'zip'
-    libpng\-dev \\       \# Для расширения 'gd'
-    jpeg\-dev \\         \# Для расширения 'gd'
-    oniguruma\-dev \\    \# Для расширения 'mbstring'
-    libxml2\-dev \\      \# Для расширения 'xml'
-    icu\-dev \\          \# Для расширения 'intl'
-    postgresql\-dev \\   \# Для расширения 'pdo\_pgsql'
-    sqlite\-dev \\       \# Для расширения 'pdo\_sqlite'
-    mysql\-client \\     \# Для расширения 'pdo\_mysql' \(клиентская библиотека\)
-    pkgconfig \\        \# Вспомогательный инструмент для компиляции
+    libzip\-dev \\      
+    libpng\-dev \\       
+    jpeg\-dev \\        
+    oniguruma\-dev \\    
+    libxml2\-dev \\     
+    icu\-dev \\         
+    postgresql\-dev \\   
+    sqlite\-dev \\      
+    mysql\-client \\     
+    pkgconfig \\        
   && docker\-php\-ext\-install \\
     pdo\_mysql \\
     pdo\_pgsql \\
