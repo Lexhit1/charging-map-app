@@ -12,7 +12,7 @@ RUN apk add --no-cache \
         postgresql-libs sqlite-libs \
     && apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS postgresql-dev sqlite-dev \
-        oniguruma-dev \
+        oniguruma-dev libzip-dev \
     && docker-php-ext-install \
         pdo_pgsql pdo_sqlite mbstring zip xml intl opcache \
     && docker-php-ext-enable opcache \
@@ -30,7 +30,7 @@ WORKDIR /var/www/html
 RUN apk add --no-cache \
         curl bash git \
     && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
-    && apk add --no-cache --virtual .xdebug-deps $PHPIZE_DEPS \
+    && apk add --no-cache --virtual .xdebug-deps $PHPIZE_DEPS linux-headers \
     && pecl install xdebug \
     && docker-php-ext-enable xdebug \
     && apk del .xdebug-deps
