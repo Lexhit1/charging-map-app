@@ -1,99 +1,45 @@
-# syntax=docker/dockerfile:1
+# 1. Stage: Base PHP image with common extensions
+FROM php:8.3-fpm-alpine AS php-base
 
-##############################################
-# 1. Stage: Base (runtime-only PHP)         #
-##############################################
-FROM php:8.2-fpm-alpine AS php-base
+# Install PHP extensions and Composer
+# ВНИМАНИЕ: Здесь мы устанавливаем только те dev-пакеты, которые нужны для сборки расширений.
+# jpeg-dev вместо libjpeg-turbo для gd
+# postgresql-dev для pdo_pgsql
+# mysql-client для pdo_mysql (хотя pdo_mysql не требует mysql-client для сборки, но полезно иметь)
+# nodejs и npm для фронтенда
+RUN apk add --no-cache \
+    git \
+    curl \
+    libzip-dev \
+    libpng-dev \
+    jpeg-dev \
+    postgresql-dev \
+    mysql-client \
+    nodejs \
+    npm \
+    bash \
+  # Устанавливаем PHP-расширения
+  && docker-php-ext-install pdo_mysql pdo_pgsql zip gd opcache \
+  # Включаем установленные расширения
+  && docker-php-ext-enable pdo_mysql pdo_pgsql opcache \
+  # Удаляем временные файлы и кэши apk
+  && rm -rf /var/cache/apk/* \
+  # Устанавливаем Composer
+  && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
+# Set working directory for all stages
 WORKDIR /var/www/html
 
-# Устанавливаем runtime-библиотеки и зависимости для сборки pdo_pgsql и pdo_sqlite
-RUN apk add --no-cache \
-        libzip \
-        libpng \
-        libjpeg-turbo \
-        oniguruma \
-        libxml2 \
-        icu-libs \
-        postgresql-libs \
-        sqlite-libs \
-        # пакеты разработки для pdo_pgsql и pdo_sqlite
-        postgresql-dev \
-        sqlite-dev \
-        pkgconfig \
-    && docker-php-ext-install \
-        pdo_pgsql \
-        pdo_sqlite \
-        mbstring \
-        zip \
-        xml \
-        intl \
-        opcache \
-    && docker-php-ext-enable opcache \
-    && apk del \
-        postgresql-dev \
-        sqlite-dev \
-        pkgconfig \
-    && rm -rf /var/cache/apk/*
+# 2. Stage: Install PHP dependencies (Composer)
+FROM php-base AS php-deps
 
-##############################################
-# 2. Stage: Build PHP dependencies (+ Xdebug)#
-##############################################
-FROM php:8.2-fpm-alpine AS php-deps
-
-WORKDIR /var/www/html
-
-RUN apk add --no-cache \
-        autoconf \
-        build-base \
-        linux-headers \
-        icu-dev \
-        libzip-dev \
-        libpng-dev \
-        libjpeg-turbo-dev \
-        oniguruma-dev \
-        libxml2-dev \
-        postgresql-dev \
-        sqlite-dev \
-        libedit-dev \
-        pkgconfig \
-        zip \
-        unzip \
-        bash \
-        git \
-        curl \
-    && pecl install xdebug \
-    && docker-php-ext-enable xdebug \
-    && apk del \
-        autoconf \
-        build-base \
-        linux-headers \
-        icu-dev \
-        libzip-dev \
-        libpng-dev \
-        libjpeg-turbo-dev \
-        oniguruma-dev \
-        libxml2-dev \
-        postgresql-dev \
-        sqlite-dev \
-        libedit-dev \
-        pkgconfig \
-    && rm -rf /var/cache/apk/*
-
-# Composer
-COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
-ENV COMPOSER_ALLOW_SUPERUSER=1
-
+# Copy Composer files and install dependencies
 COPY composer.json composer.lock ./
-RUN composer install \
-        --no-dev \
-        --optimize-autoloader \
-        --no-scripts \
-        --prefer-dist \
-        --no-interaction
+RUN composer install --no-dev --optimize-autoloader
 
-# Копируем приложение
+# Copy the rest of the application files
 COPY . .
+# Set permissions for storage and cache directories
 RUN chmod -R ug+rw storage bootstrap/cache
 
 ##############################################
@@ -116,27 +62,28 @@ FROM php-base AS runtime
 
 WORKDIR /var/www/html
 
-# Копируем PHP-приложение из php-deps (без Xdebug)
+# Copy PHP application from php-deps and frontend build
 COPY --from=php-deps /var/www/html /var/www/html
-
-# Копируем фронтенд-сборку
 COPY --from=frontend-build /var/www/html/public/build public/build
 
-# Отключаем Xdebug на всякий случай
-RUN docker-php-ext-disable xdebug || true
+# Disable Xdebug (if installed) and optimize Laravel
+# Opcache уже включен в php-base, так что его здесь не нужно включать
+RUN docker-php-ext-disable xdebug || true \
+  && php artisan config:cache \
+  && php artisan route:cache \
+  && php artisan view:cache \
+  && chmod -R 755 bootstrap/cache storage
 
-# Laravel optimization
-RUN php artisan config:cache \
- && php artisan route:cache \
- && php artisan view:cache \
- && chmod -R 755 bootstrap/cache storage
-
+# Copy the entrypoint script and make it executable
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
+# Run the application as a non-root user for security
 USER www-data:www-data
 
+# Expose port 10000 (this is the internal port Laravel FPM will listen on)
 EXPOSE 10000
 
+# Define the entrypoint script that runs when the container starts
 ENTRYPOINT ["docker-entrypoint.sh"]
+# Default command to run (PHP-FPM server)
 CMD ["php-fpm"]
