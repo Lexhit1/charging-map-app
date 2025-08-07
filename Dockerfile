@@ -9,7 +9,7 @@ RUN apk add --no-cache \
     libjpeg-turbo \
     oniguruma-dev \
     libxml2 \
-    icu-libs \
+    icu \
     postgresql-libs \
     sqlite-libs \
     pkgconfig \
