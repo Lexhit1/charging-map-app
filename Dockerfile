@@ -7,7 +7,7 @@ FROM php:8.2-fpm-alpine AS php-base
 
 WORKDIR /var/www/html
 
-# Устанавливаем runtime-библиотеки и расширения
+# Устанавливаем runtime-библиотеки и расширения, включая dev-пакеты для сборки PDO
 RUN apk add --no-cache \
         libzip \
         libpng \
@@ -19,15 +19,17 @@ RUN apk add --no-cache \
         sqlite-libs \
         pkgconfig \
         sqlite-dev \
+        postgresql-dev \
     && docker-php-ext-install \
         pdo_pgsql \
         pdo_sqlite \
+        mbstring \
         zip \
         xml \
         intl \
         opcache \
     && docker-php-ext-enable opcache \
-    && apk del sqlite-dev pkgconfig \
+    && apk del sqlite-dev postgresql-dev pkgconfig \
     && rm -rf /var/cache/apk/*
 
 ##############################################
@@ -109,9 +111,11 @@ FROM php-base AS runtime
 
 WORKDIR /var/www/html
 
+# Копируем собранное PHP-приложение и фронтенд
 COPY --from=php-deps /var/www/html /var/www/html
 COPY --from=frontend-build /var/www/html/public/build public/build
 
+# Отключаем Xdebug и оптимизируем Laravel
 RUN docker-php-ext-disable xdebug || true \
   && php artisan config:cache \
   && php artisan route:cache \
