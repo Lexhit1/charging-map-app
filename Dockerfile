@@ -7,7 +7,7 @@ FROM php:8.2-fpm-alpine AS php-base
 
 WORKDIR /var/www/html
 
-# Устанавливаем runtime-библиотеки и зависимости для сборки PHP-расширений
+# Устанавливаем runtime-библиотеки и расширения
 RUN apk add --no-cache \
         libzip \
         libpng \
@@ -18,9 +18,6 @@ RUN apk add --no-cache \
         postgresql-libs \
         sqlite-libs \
         pkgconfig \
-    && apk add --no-cache --virtual .phpize-deps \
-        $PHPIZE_DEPS \
-        postgresql-dev \
         sqlite-dev \
     && docker-php-ext-install \
         pdo_pgsql \
@@ -30,7 +27,7 @@ RUN apk add --no-cache \
         intl \
         opcache \
     && docker-php-ext-enable opcache \
-    && apk del .phpize-deps \
+    && apk del sqlite-dev pkgconfig \
     && rm -rf /var/cache/apk/*
 
 ##############################################
@@ -77,6 +74,7 @@ RUN apk add --no-cache \
         pkgconfig \
     && rm -rf /var/cache/apk/*
 
+# Composer
 COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
@@ -114,12 +112,11 @@ WORKDIR /var/www/html
 COPY --from=php-deps /var/www/html /var/www/html
 COPY --from=frontend-build /var/www/html/public/build public/build
 
-RUN docker-php-ext-disable xdebug || true
-
-RUN php artisan config:cache \
- && php artisan route:cache \
- && php artisan view:cache \
- && chmod -R 755 bootstrap/cache storage
+RUN docker-php-ext-disable xdebug || true \
+  && php artisan config:cache \
+  && php artisan route:cache \
+  && php artisan view:cache \
+  && chmod -R 755 bootstrap/cache storage
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
