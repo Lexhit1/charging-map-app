@@ -45,6 +45,7 @@ COPY . /var/www/html
 #    --optimize-autoloader: Оптимизировать автозагрузчик классов для продакшена.
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 RUN composer install --no-dev --optimize-autoloader
+
 # 7. Настраиваем права доступа
 #    - chown -R www-data:www-data /var/www/html: Изменяем владельца всех файлов и папок в /var/www/html на пользователя www-data,
 #      под которым обычно работает Nginx и PHP-FPM.
@@ -59,13 +60,17 @@ RUN chown -R www-data:www-data /var/www/html \
 #    - supervisord.conf: Конфигурация Supervisor. Копируем ее в стандартную директорию Supervisor.
 #    - nginx.conf: Конфигурация Nginx. Копируем ее в sites-available, а затем создаем символическую ссылку в sites-enabled,
 #      чтобы Nginx ее подхватил.
-#    - www.conf: Конфигурация PHP-FPM для пула www. Копируем ее в директорию fpm/pool.d.
+#    - php-fpm.conf: Главная конфигурация PHP-FPM.
+#    - www.conf: Конфигурация PHP-FPM для пула www.
 #    - rm -f /etc/nginx/sites-enabled/default: Удаляем стандартную символическую ссылку Nginx, если она есть, чтобы не конфликтовать с нашей.
+#    - rm -f /etc/php/8.2/fpm/pool.d/www.conf: Удаляем стандартный файл www.conf из базового образа, чтобы не было конфликтов.
 COPY supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY nginx/nginx.conf /etc/nginx/sites-available/default.conf
-COPY php-fpm/www.conf /etc/php/8.2/fpm/pool.d/www.conf
+COPY php-fpm/php-fpm.conf /etc/php/8.2/fpm/php-fpm.conf
 RUN ln -sf /etc/nginx/sites-available/default.conf /etc/nginx/sites-enabled/default.conf \
-    && rm -f /etc/nginx/sites-enabled/default
+    && rm -f /etc/nginx/sites-enabled/default \
+    && rm -f /etc/php/8.2/fpm/pool.d/www.conf
+COPY php-fpm/www.conf /etc/php/8.2/fpm/pool.d/www.conf
 
 # 9. Открываем порт 80
 #    Это порт, на котором будет работать Nginx. Render будет видеть только его.
