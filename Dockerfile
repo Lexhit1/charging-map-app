@@ -1,77 +1,78 @@
-# 1. Stage: Base PHP image with common extensions
-FROM php:8.3-fpm-alpine AS php-base
+\# 1\. Stage: Base PHP image with common extensions
+FROM php:8\.3\-fpm\-alpine AS php\-base
 
-# Install PHP extensions dependencies and Composer
-# Здесь мы устанавливаем "-dev" версии библиотек, которые нужны для компиляции PHP-расширений.
-# Например, "libzip-dev" вместо "libzip" для расширения "zip".
-RUN apk add --no-cache \
-    git \
-    curl \
-    bash \
-    # PHP extension build dependencies:
-    libzip-dev \       # Для расширения 'zip'
-    libpng-dev \       # Для расширения 'gd'
-    jpeg-dev \         # Для расширения 'gd'
-    oniguruma-dev \    # Для расширения 'mbstring'
-    libxml2-dev \      # Для расширения 'xml'
-    icu-dev \          # Для расширения 'intl'
-    postgresql-dev \   # Для расширения 'pdo_pgsql'
-    sqlite-dev \       # Для расширения 'pdo_sqlite'
-    mysql-client \     # Для расширения 'pdo_mysql' (клиентская библиотека)
-    pkgconfig \        # Вспомогательный инструмент для компиляции
-  && docker-php-ext-install \
-    pdo_mysql \
-    pdo_pgsql \
-    pdo_sqlite \
-    mbstring \
-    zip \
-    xml \
-    intl \
-    gd \
-    opcache \
-  && docker-php-ext-enable pdo_mysql pdo_pgsql pdo_sqlite opcache \
-  && rm -rf /var/cache/apk/* \
-  && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+\# Install PHP extensions dependencies and Composer
+\# Здесь мы устанавливаем "\-dev" версии библиотек, которые нужны для компиляции PHP\-расширений\.
+\# Например, "libzip\-dev" вместо "libzip" для расширения "zip"\.
+RUN apk add \-\-no\-cache \\
+    git \\
+    curl \\
+    bash \\
+    \# PHP extension build dependencies:
+    libzip\-dev \\       \# Для расширения 'zip'
+    libpng\-dev \\       \# Для расширения 'gd'
+    jpeg\-dev \\         \# Для расширения 'gd'
+    oniguruma\-dev \\    \# Для расширения 'mbstring'
+    libxml2\-dev \\      \# Для расширения 'xml'
+    icu\-dev \\          \# Для расширения 'intl'
+    postgresql\-dev \\   \# Для расширения 'pdo\_pgsql'
+    sqlite\-dev \\       \# Для расширения 'pdo\_sqlite'
+    mysql\-client \\     \# Для расширения 'pdo\_mysql' \(клиентская библиотека\)
+    pkgconfig \\        \# Вспомогательный инструмент для компиляции
+  && docker\-php\-ext\-install \\
+    pdo\_mysql \\
+    pdo\_pgsql \\
+    pdo\_sqlite \\
+    mbstring \\
+    zip \\
+    xml \\
+    intl \\
+    gd \\
+    opcache \\
+  && docker\-php\-ext\-enable pdo_mysql pdo_pgsql pdo\_sqlite opcache \\
+  && rm \-rf /var/cache/apk/\* \\
+  && curl \-sS https://getcomposer\.org/installer \| php \-\- \-\-install\-dir\=/usr/local/bin \-\-filename\=composer
 
-# Set working directory for all stages
+\# Set working directory for all stages
 WORKDIR /var/www/html
 
-# 2. Stage: Install PHP dependencies (Composer)
-FROM php-base AS php-deps
+\# 2\. Stage: Install PHP dependencies \(Composer\)
+FROM php\-base AS php\-deps
 
-# Сначала скопируйте ВСЕ файлы приложения, включая 'artisan'.
-# Это важно, потому что 'composer install' будет запускать скрипты Laravel,
-# которым нужен файл 'artisan'.
-COPY . .
+\# Сначала скопируйте ВСЕ файлы приложения, включая 'artisan'\.
+\# Это важно, потому что 'composer install' будет запускать скрипты Laravel,
+\# которым нужен файл 'artisan'\.
+COPY \. \.
 
-# Теперь установите Composer зависимости.
-# Файл 'artisan' теперь доступен, и скрипты Laravel могут быть выполнены.
-RUN composer install --no-dev --optimize-autoloader
+\# Теперь установите Composer зависимости\.
+\# Файл 'artisan' теперь доступен, и скрипты Laravel могут быть выполнены\.
+RUN composer install \-\-no\-dev \-\-optimize\-autoloader
 
-# Установите права доступа для папок storage и bootstrap/cache
-RUN chmod -R ug+rw storage bootstrap/cache
+\# Установите права доступа для папок storage и bootstrap/cache
+RUN chmod \-R ug+rw storage bootstrap/cache
 
-##############################################
-# 3. Stage: Build frontend assets            #
-##############################################
-FROM node:22-alpine AS frontend-build
+\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#
+\# 3\. Stage: Build frontend assets            \#
+\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#
+FROM node:22\-alpine AS frontend\-build
 
 WORKDIR /var/www/html
 
-COPY package.json package-lock.json vite.config.js ./
-RUN npm ci --ignore-scripts
+COPY package\.json package\-lock\.json vite\.config\.js \./
+RUN npm ci \-\-ignore\-scripts
 
 COPY resources resources
 RUN npm run build
 
-##############################################
-# 4. Stage: Final runtime image              #
-##############################################
-FROM php-base AS runtime
+\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#
+\# 4\. Stage: Final runtime image              \#
+\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#
+FROM php\-base AS runtime
 
 WORKDIR /var/www/html
-# Скопируйте PHP-приложение из php-deps и собранные фронтенд-файлы
-COPY --from=php-deps /var/www/html /var/www/html
+
+\# Скопируйте PHP\-приложение из php\-deps и собранные фронтенд\-файлы
+COPY \-\-from\=php\-deps /var/www/html /var/www/html
 COPY --from=frontend-build /var/www/html/public/build public/build
 
 # Отключите Xdebug (если установлен) и оптимизируйте Laravel
