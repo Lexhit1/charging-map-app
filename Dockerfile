@@ -1,50 +1,89 @@
-# 1. Базовый образ PHP-FPM на Alpine Linux
-FROM php:8.2-fpm-alpine
+# 1. Stage: Base PHP image with common extensions
+FROM php:8.3-fpm-alpine AS php-base
 
-# 2. Установка системных зависимостей и PHP расширений
-#    Здесь мы исправляем 'oniguruma' на 'oniguruma-dev'
+# Install PHP extensions and Composer
+# ВНИМАНИЕ: Здесь мы устанавливаем только те dev-пакеты, которые нужны для сборки расширений.
+# jpeg-dev вместо libjpeg-turbo для gd
+# postgresql-dev для pdo_pgsql
+# mysql-client для pdo_mysql (хотя pdo_mysql не требует mysql-client для сборки, но полезно иметь)
+# nodejs и npm для фронтенда
 RUN apk add --no-cache \
-    libzip \
-    libpng \
-    libjpeg-turbo \
-    oniguruma-dev \
-    libxml2 \
-    icu \
-    postgresql-libs \
-    sqlite-libs \
-    pkgconfig \
+    git \
+    curl \
+    libzip-dev \
+    libpng-dev \
+    jpeg-dev \
     postgresql-dev \
-    sqlite-dev \
-    && docker-php-ext-install \
-    pdo_pgsql \
-    pdo_sqlite \
-    mbstring \
-    zip \
-    xml \
-    intl \
-    opcache \
-    && docker-php-ext-enable opcache \
-    && apk del postgresql-dev sqlite-dev pkgconfig \
-    && rm -rf /var/cache/apk/*
+    mysql-client \
+    nodejs \
+    npm \
+    bash \
+  # Устанавливаем PHP-расширения
+  && docker-php-ext-install pdo_mysql pdo_pgsql zip gd opcache \
+  # Включаем установленные расширения
+  && docker-php-ext-enable pdo_mysql pdo_pgsql opcache \
+  # Удаляем временные файлы и кэши apk
+  && rm -rf /var/cache/apk/* \
+  # Устанавливаем Composer
+  && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
-# 3. Копирование файлов приложения в рабочую директорию
-#    Убедись, что твои файлы приложения находятся в корневой директории проекта,
-#    относительно которой запускается Dockerfile.
+# Set working directory for all stages
 WORKDIR /var/www/html
-COPY . /var/www/html
 
-# 4. Установка зависимостей Composer (если ты используешь Composer)
-#    Раскомментируй эти строки, если у тебя есть файл composer.json
-#    и тебе нужно установить зависимости PHP.
-# COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-# RUN composer install --no-dev --optimize-autoloader
+# 2. Stage: Install PHP dependencies (Composer)
+FROM php-base AS php-deps
 
-# 5. Настройка прав доступа (если требуется, для веб-сервера)
-#    Это часто необходимо для PHP-FPM
-RUN chown -R www-data:www-data /var/www/html
+# Copy Composer files and install dependencies
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --optimize-autoloader
 
-# 6. Открытие порта, на котором PHP-FPM слушает запросы (по умолчанию 9000)
-EXPOSE 9000
+# Copy the rest of the application files
+COPY . .
+# Set permissions for storage and cache directories
+RUN chmod -R ug+rw storage bootstrap/cache
 
-# 7. Команда для запуска PHP-FPM при старте контейнера
+##############################################
+# 3. Stage: Build frontend assets            #
+##############################################
+FROM node:22-alpine AS frontend-build
+
+WORKDIR /var/www/html
+
+COPY package.json package-lock.json vite.config.js ./
+RUN npm ci --ignore-scripts
+
+COPY resources resources
+RUN npm run build
+
+##############################################
+# 4. Stage: Final runtime image              #
+##############################################
+FROM php-base AS runtime
+
+WORKDIR /var/www/html
+
+# Copy PHP application from php-deps and frontend build
+COPY --from=php-deps /var/www/html /var/www/html
+COPY --from=frontend-build /var/www/html/public/build public/build
+
+# Disable Xdebug (if installed) and optimize Laravel
+# Opcache уже включен в php-base, так что его здесь не нужно включать
+RUN docker-php-ext-disable xdebug || true \
+  && php artisan config:cache \
+  && php artisan route:cache \
+  && php artisan view:cache \
+  && chmod -R 755 bootstrap/cache storage
+
+# Copy the entrypoint script and make it executable
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Run the application as a non-root user for security
+USER www-data:www-data
+
+# Expose port 10000 (this is the internal port Laravel FPM will listen on)
+EXPOSE 10000
+
+# Define the entrypoint script that runs when the container starts
+ENTRYPOINT ["docker-entrypoint.sh"]
+# Default command to run (PHP-FPM server)
 CMD ["php-fpm"]
