@@ -1,82 +1,67 @@
-# Dockerfile
+# syntax=docker/dockerfile:1
 
-# --- Этап 1: Сборка образа PHP-FPM с зависимостями приложения ---
-# Используем базовый образ PHP версии 8.2 с FPM и Alpine Linux
+##############################################
+# 1. Stage: Сборка PHP-приложения и зависимостей
+##############################################
 FROM php:8.2-fpm-alpine AS php_app
 
-# Устанавливаем системные зависимости, необходимые для PHP расширений и Composer
-# 'apk add --no-cache' - это команда для установки пакетов в Alpine Linux
-# 'git' и 'unzip' часто нужны для Composer
-# ДОБАВЛЯЕМ 'libxml2-dev' - это исправит ошибку "libxml-2.0 >= 2.9.0"
+WORKDIR /var/www/html
+
+# Устанавливаем системные зависимости и расширения
 RUN apk add --no-cache \
     git \
     unzip \
     libxml2-dev \
-    # Добавьте здесь другие необходимые системные пакеты, если они нужны для ваших PHP-расширений
-    # Например, если вы используете GD библиотеку для работы с изображениями:
-    # libpng-dev \
-    # libjpeg-turbo-dev \
-    # freetype-dev \
-    # Если вам нужно установить конкретные PHP-расширения, это делается так (пример):
-    # && docker-php-ext-install pdo_mysql gd exif bcmath opcache xml
+    libpng-dev \
+    libjpeg-turbo-dev \
+    freetype-dev \
+    icu-dev \
+    oniguruma-dev \
+    postgresql-dev \
+    sqlite-dev \
+    pkgconfig \
+  && docker-php-ext-configure gd --with-freetype --with-jpeg \
+  && docker-php-ext-install \
+    pdo_pgsql \
+    pdo_sqlite \
+    mbstring \
+    zip \
+    xml \
+    intl \
+    gd \
+    opcache \
+  && docker-php-ext-enable opcache
 
-# Устанавливаем рабочую директорию внутри контейнера.
-# Все последующие команды будут выполняться относительно этой директории.
-WORKDIR /var/www/html
-
-# ОЧЕНЬ ВАЖНО: КОПИРУЕМ ВСЕ ФАЙЛЫ ПРИЛОЖЕНИЯ В КОНТЕЙНЕР
-# Это включает 'composer.json', 'composer.lock', и главное - файл 'artisan'.
-# Этот шаг ДОЛЖЕН происходить ДО запуска 'composer install',
-# чтобы 'artisan' был доступен, когда Composer будет выполнять свои скрипты.
+# Копируем исходники приложения
 COPY . .
 
-# Устанавливаем PHP зависимости с помощью Composer
-# '--no-dev': не устанавливать пакеты, которые нужны только для разработки
-# '--optimize-autoloader': оптимизировать автозагрузчик классов для более быстрой работы приложения
-# '--no-interaction': не запрашивать ввод пользователя во время установки
-RUN composer install \-\-no\-dev \-\-optimize\-autoloader \-\-no\-interaction
+# Устанавливаем зависимости через Composer
+RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-\# Устанавливаем правильные права доступа для директорий 'storage' и 'bootstrap/cache'
-\# Это необходимо, чтобы приложение могло записывать данные \(логи, кэш, сессии и т\.д\.\)
-\# 'chown \-R www\-data:www\-data' меняет владельца на пользователя 'www\-data' \(стандартный пользователь для веб\-серверов\)
-\# 'chmod \-R 775' дает права на чтение, запись и выполнение для владельца и группы
-RUN chown \-R www\-data:www\-data /var/www/html \\
-    && chmod \-R 775 /var/www/html/storage \\
-    && chmod \-R 775 /var/www/html/bootstrap/cache
+# Настраиваем права для storage и cache
+RUN chown -R www-data:www-data /var/www/html \
+  && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
-\# Порт 9000 \- это стандартный порт для PHP\-FPM\. Он будет использоваться веб\-сервером Nginx для связи с PHP\.
+# Экспонируем порт PHP-FPM
 EXPOSE 9000
 
-\# Команда, которая запускается при старте контейнера: запуск PHP\-FPM
-CMD \["php\-fpm"\]
+CMD ["php-fpm"]
 
+##############################################
+# 2. Stage: Nginx для отдачи статики и proxy
+##############################################
+FROM nginx:alpine AS nginx_app
 
-\# \-\-\- Этап 2: Сборка образа Nginx \-\-\-
-\# Используем базовый образ Nginx с Alpine Linux
-FROM nginx:alpine AS nginx\_app
+# Удаляем дефолтный конфиг
+RUN rm /etc/nginx/conf.d/default.conf
 
-\# Удаляем стандартную конфигурацию Nginx, чтобы использовать свою
-RUN rm /etc/nginx/conf\.d/default\.conf
+# Копируем свой конфиг
+COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
-\# Копируем нашу кастомную конфигурацию Nginx
-\# Убедитесь, что у вас есть папка 'nginx' в корне вашего проекта, а внутри нее файл 'nginx\.conf'\.
-\# Например, ваш проект должен выглядеть так:
-\# ваш\_проект/
-\# ├── Dockerfile
-\# ├── docker\-compose\.yml
-\# ├── nginx/
-\# │   └── nginx\.conf
-\# └── \.\.\. \(остальные файлы проекта\)
-COPY nginx/nginx\.conf /etc/nginx/conf\.d/default\.conf
+# Копируем сгенерированные файлы приложения из php_app
+COPY --from=php_app /var/www/html /var/www/html
 
-\# Копируем все файлы приложения из предыдущей стадии сборки \(php\_app\)
-\# Это нужно, чтобы Nginx мог отдавать статические файлы \(CSS, JS, изображения\)
-\# и правильно перенаправлять запросы к PHP\-FPM\.
-COPY \-\-from\=php\_app /var/www/html /var/www/html
-
-\# Порт 80 \- это стандартный порт для веб\-сервера \(HTTP\)\.
-\# Через этот порт пользователи будут обращаться к твоему приложению\.
+# Экспонируем HTTP-порт
 EXPOSE 80
 
-\# Команда, которая запускается при старте контейнера: запуск Nginx
-CMD \["nginx", "\-g", "daemon off;"\]
+CMD ["nginx", "-g", "daemon off;"]
