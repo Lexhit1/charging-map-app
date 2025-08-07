@@ -9,16 +9,16 @@ RUN apk add \-\-no\-cache \\
     curl \\
     bash \\
     \# PHP extension build dependencies:
-    libzip\-dev \\      
-    libpng\-dev \\       
-    jpeg\-dev \\        
-    oniguruma\-dev \\    
-    libxml2\-dev \\     
-    icu\-dev \\         
-    postgresql\-dev \\   
-    sqlite\-dev \\      
-    mysql\-client \\     
-    pkgconfig \\        
+    libzip\-dev \\       \# Для расширения 'zip'
+    libpng\-dev \\       \# Для расширения 'gd'
+    jpeg\-dev \\         \# Для расширения 'gd'
+    oniguruma\-dev \\    \# Для расширения 'mbstring'
+    libxml2\-dev \\      \# Для расширения 'xml'
+    icu\-dev \\          \# Для расширения 'intl'
+    postgresql\-dev \\   \# Для расширения 'pdo\_pgsql'
+    sqlite\-dev \\       \# Для расширения 'pdo\_sqlite'
+    mysql\-client \\     \# Для расширения 'pdo\_mysql' \(клиентская библиотека\)
+    pkgconfig \\        \# Вспомогательный инструмент для компиляции
   && docker\-php\-ext\-install \\
     pdo\_mysql \\
     pdo\_pgsql \\
@@ -63,7 +63,6 @@ RUN npm ci \-\-ignore\-scripts
 
 COPY resources resources
 RUN npm run build
-
 \#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#
 \# 4\. Stage: Final runtime image              \#
 \#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#
@@ -73,25 +72,25 @@ WORKDIR /var/www/html
 
 \# Скопируйте PHP\-приложение из php\-deps и собранные фронтенд\-файлы
 COPY \-\-from\=php\-deps /var/www/html /var/www/html
-COPY --from=frontend-build /var/www/html/public/build public/build
+COPY \-\-from\=frontend\-build /var/www/html/public/build public/build
 
-# Отключите Xdebug (если установлен) и оптимизируйте Laravel
-RUN docker-php-ext-disable xdebug || true \
-  && php artisan config:cache \
-  && php artisan route:cache \
-  && php artisan view:cache \
-  && chmod -R 755 bootstrap/cache storage
+\# Отключите Xdebug \(если установлен\) и оптимизируйте Laravel
+RUN docker\-php\-ext\-disable xdebug \|\| true \\
+  && php artisan config:cache \\
+  && php artisan route:cache \\
+  && php artisan view:cache \\
+  && chmod \-R 755 bootstrap/cache storage
 
-# Скопируйте скрипт entrypoint и сделайте его исполняемым
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-# Запустите приложение от имени пользователя без прав root для безопасности
-USER www-data:www-data
+\# Скопируйте скрипт entrypoint и сделайте его исполняемым
+COPY docker\-entrypoint\.sh /usr/local/bin/docker\-entrypoint\.sh
+RUN chmod +x /usr/local/bin/docker\-entrypoint\.sh
+\# Запустите приложение от имени пользователя без прав root для безопасности
+USER www\-data:www\-data
 
-# Откройте порт 10000 (это внутренний порт, на котором будет слушать Laravel FPM)
+\# Откройте порт 10000 \(это внутренний порт, на котором будет слушать Laravel FPM\)
 EXPOSE 10000
 
-# Определите скрипт entrypoint, который запускается при старте контейнера
-ENTRYPOINT ["docker-entrypoint.sh"]
-# Команда по умолчанию для запуска (сервер PHP-FPM)
-CMD ["php-fpm"]
+\# Определите скрипт entrypoint, который запускается при старте контейнера
+ENTRYPOINT \["docker\-entrypoint\.sh"\]
+\# Команда по умолчанию для запуска \(сервер PHP\-FPM\)
+CMD \["php\-fpm"\]
