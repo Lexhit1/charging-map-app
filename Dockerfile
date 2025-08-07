@@ -1,135 +1,50 @@
-# syntax=docker/dockerfile:1
+# 1. Базовый образ PHP-FPM на Alpine Linux
+FROM php:8.2-fpm-alpine
 
-##############################################
-# 1. Stage: Base (runtime-only PHP)         #
-##############################################
-FROM php:8.2-fpm-alpine AS php-base
-
-WORKDIR /var/www/html
-
-# Устанавливаем runtime-библиотеки и dev-заголовки для сборки PDO
+# 2. Установка системных зависимостей и PHP расширений
+#    Здесь мы исправляем 'oniguruma' на 'oniguruma-dev'
 RUN apk add --no-cache \
-        libzip \
-        libpng \
-        libjpeg-turbo \
-        oniguruma \
-        libxml2 \
-        icu-libs \
-        postgresql-libs \
-        sqlite-libs \
-        pkgconfig \
-        postgresql-dev \
-        sqlite-dev \
+    libzip \
+    libpng \
+    libjpeg-turbo \
+    oniguruma-dev \
+    libxml2 \
+    icu-libs \
+    postgresql-libs \
+    sqlite-libs \
+    pkgconfig \
+    postgresql-dev \
+    sqlite-dev \
     && docker-php-ext-install \
-        pdo_pgsql \
-        pdo_sqlite \
-        mbstring \
-        zip \
-        xml \
-        intl \
-        opcache \
+    pdo_pgsql \
+    pdo_sqlite \
+    mbstring \
+    zip \
+    xml \
+    intl \
+    opcache \
     && docker-php-ext-enable opcache \
-    && apk del \
-        postgresql-dev \
-        sqlite-dev \
-        pkgconfig \
+    && apk del postgresql-dev sqlite-dev pkgconfig \
     && rm -rf /var/cache/apk/*
 
-##############################################
-# 2. Stage: Build PHP dependencies (+ Xdebug)#
-##############################################
-FROM php:8.2-fpm-alpine AS php-deps
-
+# 3. Копирование файлов приложения в рабочую директорию
+#    Убедись, что твои файлы приложения находятся в корневой директории проекта,
+#    относительно которой запускается Dockerfile.
 WORKDIR /var/www/html
+COPY . /var/www/html
 
-RUN apk add --no-cache \
-        autoconf \
-        build-base \
-        linux-headers \
-        icu-dev \
-        libzip-dev \
-        libpng-dev \
-        libjpeg-turbo-dev \
-        oniguruma-dev \
-        libxml2-dev \
-        postgresql-dev \
-        sqlite-dev \
-        libedit-dev \
-        pkgconfig \
-        zip \
-        unzip \
-        bash \
-        git \
-        curl \
-    && pecl install xdebug \
-    && docker-php-ext-enable xdebug \
-    && apk del \
-        autoconf \
-        build-base \
-        linux-headers \
-        icu-dev \
-        libzip-dev \
-        libpng-dev \
-        libjpeg-turbo-dev \
-        oniguruma-dev \
-        libxml2-dev \
-        postgresql-dev \
-        sqlite-dev \
-        libedit-dev \
-        pkgconfig \
-    && rm -rf /var/cache/apk/*
+# 4. Установка зависимостей Composer (если ты используешь Composer)
+#    Раскомментируй эти строки, если у тебя есть файл composer.json
+#    и тебе нужно установить зависимости PHP.
+# COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+# RUN composer install --no-dev --optimize-autoloader
 
-# Composer
-COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
-ENV COMPOSER_ALLOW_SUPERUSER=1
+# 5. Настройка прав доступа (если требуется, для веб-сервера)
+#    Это часто необходимо для PHP-FPM
+RUN chown -R www-data:www-data /var/www/html
 
-COPY composer.json composer.lock ./
-RUN composer install \
-        --no-dev \
-        --optimize-autoloader \
-        --no-scripts \
-        --prefer-dist \
-        --no-interaction
+# 6. Открытие порта, на котором PHP-FPM слушает запросы (по умолчанию 9000)
+EXPOSE 9000
 
-COPY . .
-RUN chmod -R ug+rw storage bootstrap/cache
-
-##############################################
-# 3. Stage: Build frontend assets            #
-##############################################
-FROM node:22-alpine AS frontend-build
-
-WORKDIR /var/www/html
-
-COPY package.json package-lock.json vite.config.js ./
-RUN npm ci --ignore-scripts
-
-COPY resources resources
-RUN npm run build
-
-##############################################
-# 4. Stage: Final runtime image              #
-##############################################
-FROM php-base AS runtime
-
-WORKDIR /var/www/html
-
-# Копируем PHP-приложение из php-deps и фронтенд-сборку
-COPY --from=php-deps /var/www/html /var/www/html
-COPY --from=frontend-build /var/www/html/public/build public/build
-
-# Отключаем Xdebug и оптимизируем Laravel
-RUN docker-php-ext-disable xdebug || true \
-  && php artisan config:cache \
-  && php artisan route:cache \
-  && php artisan view:cache \
-  && chmod -R 755 bootstrap/cache storage
-
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-USER www-data:www-data
-
-EXPOSE 10000
-
-ENTRYPOINT ["docker-entrypoint.sh"]
+# 7. Команда для запуска PHP-FPM при старте контейнера
 CMD ["php-fpm"]
