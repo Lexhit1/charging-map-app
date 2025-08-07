@@ -1,30 +1,36 @@
 # 1. Stage: Base PHP image with common extensions
 FROM php:8.3-fpm-alpine AS php-base
 
-# Install PHP extensions and Composer
-# ВНИМАНИЕ: Здесь мы устанавливаем только те dev-пакеты, которые нужны для сборки расширений.
-# jpeg-dev вместо libjpeg-turbo для gd
-# postgresql-dev для pdo_pgsql
-# mysql-client для pdo_mysql (хотя pdo_mysql не требует mysql-client для сборки, но полезно иметь)
-# nodejs и npm для фронтенда
+# Install PHP extensions dependencies and Composer
+# Здесь мы устанавливаем "-dev" версии библиотек, которые нужны для компиляции PHP-расширений.
+# Например, "libzip-dev" вместо "libzip" для расширения "zip".
 RUN apk add --no-cache \
     git \
     curl \
-    libzip-dev \
-    libpng-dev \
-    jpeg-dev \
-    postgresql-dev \
-    mysql-client \
-    nodejs \
-    npm \
     bash \
-  # Устанавливаем PHP-расширения
-  && docker-php-ext-install pdo_mysql pdo_pgsql zip gd opcache \
-  # Включаем установленные расширения
-  && docker-php-ext-enable pdo_mysql pdo_pgsql opcache \
-  # Удаляем временные файлы и кэши apk
+    # PHP extension build dependencies:
+    libzip-dev \       # Для расширения 'zip'
+    libpng-dev \       # Для расширения 'gd'
+    jpeg-dev \         # Для расширения 'gd'
+    oniguruma-dev \    # Для расширения 'mbstring'
+    libxml2-dev \      # Для расширения 'xml'
+    icu-dev \          # Для расширения 'intl'
+    postgresql-dev \   # Для расширения 'pdo_pgsql'
+    sqlite-dev \       # Для расширения 'pdo_sqlite'
+    mysql-client \     # Для расширения 'pdo_mysql' (клиентская библиотека)
+    pkgconfig \        # Вспомогательный инструмент для компиляции
+  && docker-php-ext-install \
+    pdo_mysql \
+    pdo_pgsql \
+    pdo_sqlite \
+    mbstring \
+    zip \
+    xml \
+    intl \
+    gd \
+    opcache \
+  && docker-php-ext-enable pdo_mysql pdo_pgsql pdo_sqlite opcache \
   && rm -rf /var/cache/apk/* \
-  # Устанавливаем Composer
   && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 # Set working directory for all stages
@@ -33,13 +39,16 @@ WORKDIR /var/www/html
 # 2. Stage: Install PHP dependencies (Composer)
 FROM php-base AS php-deps
 
-# Copy Composer files and install dependencies
-COPY composer.json composer.lock ./
+# Сначала скопируйте ВСЕ файлы приложения, включая 'artisan'.
+# Это важно, потому что 'composer install' будет запускать скрипты Laravel,
+# которым нужен файл 'artisan'.
+COPY . .
+
+# Теперь установите Composer зависимости.
+# Файл 'artisan' теперь доступен, и скрипты Laravel могут быть выполнены.
 RUN composer install --no-dev --optimize-autoloader
 
-# Copy the rest of the application files
-COPY . .
-# Set permissions for storage and cache directories
+# Установите права доступа для папок storage и bootstrap/cache
 RUN chmod -R ug+rw storage bootstrap/cache
 
 ##############################################
@@ -61,29 +70,27 @@ RUN npm run build
 FROM php-base AS runtime
 
 WORKDIR /var/www/html
-
-# Copy PHP application from php-deps and frontend build
+# Скопируйте PHP-приложение из php-deps и собранные фронтенд-файлы
 COPY --from=php-deps /var/www/html /var/www/html
 COPY --from=frontend-build /var/www/html/public/build public/build
 
-# Disable Xdebug (if installed) and optimize Laravel
-# Opcache уже включен в php-base, так что его здесь не нужно включать
+# Отключите Xdebug (если установлен) и оптимизируйте Laravel
 RUN docker-php-ext-disable xdebug || true \
   && php artisan config:cache \
   && php artisan route:cache \
   && php artisan view:cache \
   && chmod -R 755 bootstrap/cache storage
 
-# Copy the entrypoint script and make it executable
+# Скопируйте скрипт entrypoint и сделайте его исполняемым
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-# Run the application as a non-root user for security
+# Запустите приложение от имени пользователя без прав root для безопасности
 USER www-data:www-data
 
-# Expose port 10000 (this is the internal port Laravel FPM will listen on)
+# Откройте порт 10000 (это внутренний порт, на котором будет слушать Laravel FPM)
 EXPOSE 10000
 
-# Define the entrypoint script that runs when the container starts
+# Определите скрипт entrypoint, который запускается при старте контейнера
 ENTRYPOINT ["docker-entrypoint.sh"]
-# Default command to run (PHP-FPM server)
+# Команда по умолчанию для запуска (сервер PHP-FPM)
 CMD ["php-fpm"]
