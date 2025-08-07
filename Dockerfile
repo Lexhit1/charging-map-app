@@ -1,75 +1,82 @@
-# syntax=docker/dockerfile:1
+# Dockerfile
 
-##############################################
-# 1. Stage: Base (runtime-only PHP + PDO)   #
-##############################################
-FROM php:8.2-fpm-alpine AS php-base
+# --- Этап 1: Сборка образа PHP-FPM с зависимостями приложения ---
+# Используем базовый образ PHP версии 8.2 с FPM и Alpine Linux
+FROM php:8.2-fpm-alpine AS php_app
 
+# Устанавливаем системные зависимости, необходимые для PHP расширений и Composer
+# 'apk add --no-cache' - это команда для установки пакетов в Alpine Linux
+# 'git' и 'unzip' часто нужны для Composer
+# ДОБАВЛЯЕМ 'libxml2-dev' - это исправит ошибку "libxml-2.0 >= 2.9.0"
+RUN apk add --no-cache \
+    git \
+    unzip \
+    libxml2-dev \
+    # Добавьте здесь другие необходимые системные пакеты, если они нужны для ваших PHP-расширений
+    # Например, если вы используете GD библиотеку для работы с изображениями:
+    # libpng-dev \
+    # libjpeg-turbo-dev \
+    # freetype-dev \
+    # Если вам нужно установить конкретные PHP-расширения, это делается так (пример):
+    # && docker-php-ext-install pdo_mysql gd exif bcmath opcache xml
+
+# Устанавливаем рабочую директорию внутри контейнера.
+# Все последующие команды будут выполняться относительно этой директории.
 WORKDIR /var/www/html
 
-RUN apk add --no-cache \
-        libzip libpng libjpeg-turbo oniguruma libxml2 icu-libs \
-        postgresql-libs sqlite-libs \
-    && apk add --no-cache --virtual .build-deps \
-        $PHPIZE_DEPS postgresql-dev sqlite-dev \
-        oniguruma-dev libzip-dev \
-    && docker-php-ext-install \
-        pdo_pgsql pdo_sqlite mbstring zip xml intl opcache \
-    && docker-php-ext-enable opcache \
-    && apk del .build-deps \
-    && rm -rf /var/cache/apk/*
-
-##############################################
-# 2. Stage: Build PHP deps (+ Xdebug)        #
-##############################################
-FROM php:8.2-fpm-alpine AS php-deps
-
-WORKDIR /var/www/html
-
-# Устанавливаем composer и Xdebug
-RUN apk add --no-cache \
-        curl bash git \
-    && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
-    && apk add --no-cache --virtual .xdebug-deps $PHPIZE_DEPS linux-headers \
-    && pecl install xdebug \
-    && docker-php-ext-enable xdebug \
-    && apk del .xdebug-deps
-
-# Сборка PHP-зависимостей
-COPY composer.json composer.lock ./
-RUN composer install --no-dev --optimize-autoloader --no-interaction
-
+# ОЧЕНЬ ВАЖНО: КОПИРУЕМ ВСЕ ФАЙЛЫ ПРИЛОЖЕНИЯ В КОНТЕЙНЕР
+# Это включает 'composer.json', 'composer.lock', и главное - файл 'artisan'.
+# Этот шаг ДОЛЖЕН происходить ДО запуска 'composer install',
+# чтобы 'artisan' был доступен, когда Composer будет выполнять свои скрипты.
 COPY . .
-RUN chmod -R ug+rw storage bootstrap/cache
 
-##############################################
-# 3. Stage: Build frontend (Node/Vite)       #
-##############################################
-FROM node:22-alpine AS frontend-build
+# Устанавливаем PHP зависимости с помощью Composer
+# '--no-dev': не устанавливать пакеты, которые нужны только для разработки
+# '--optimize-autoloader': оптимизировать автозагрузчик классов для более быстрой работы приложения
+# '--no-interaction': не запрашивать ввод пользователя во время установки
+RUN composer install \-\-no\-dev \-\-optimize\-autoloader \-\-no\-interaction
 
-WORKDIR /var/www/html
-COPY package.json package-lock.json vite.config.js ./
-RUN npm ci --ignore-scripts
-COPY resources resources
-RUN npm run build
+\# Устанавливаем правильные права доступа для директорий 'storage' и 'bootstrap/cache'
+\# Это необходимо, чтобы приложение могло записывать данные \(логи, кэш, сессии и т\.д\.\)
+\# 'chown \-R www\-data:www\-data' меняет владельца на пользователя 'www\-data' \(стандартный пользователь для веб\-серверов\)
+\# 'chmod \-R 775' дает права на чтение, запись и выполнение для владельца и группы
+RUN chown \-R www\-data:www\-data /var/www/html \\
+    && chmod \-R 775 /var/www/html/storage \\
+    && chmod \-R 775 /var/www/html/bootstrap/cache
 
-##############################################
-# 4. Stage: Final runtime image              #
-##############################################
-FROM php-base AS runtime
+\# Порт 9000 \- это стандартный порт для PHP\-FPM\. Он будет использоваться веб\-сервером Nginx для связи с PHP\.
+EXPOSE 9000
 
-WORKDIR /var/www/html
+\# Команда, которая запускается при старте контейнера: запуск PHP\-FPM
+CMD \["php\-fpm"\]
 
-# Копируем из слоёв php-deps и frontend-build
-COPY --from=php-deps /var/www/html /var/www/html
-COPY --from=frontend-build /var/www/html/public/build public/build
 
-# Запускаем миграции и оптимизации при старте
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+\# \-\-\- Этап 2: Сборка образа Nginx \-\-\-
+\# Используем базовый образ Nginx с Alpine Linux
+FROM nginx:alpine AS nginx\_app
 
-USER www-data:www-data
-EXPOSE 10000
+\# Удаляем стандартную конфигурацию Nginx, чтобы использовать свою
+RUN rm /etc/nginx/conf\.d/default\.conf
 
-ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["php-fpm"]
+\# Копируем нашу кастомную конфигурацию Nginx
+\# Убедитесь, что у вас есть папка 'nginx' в корне вашего проекта, а внутри нее файл 'nginx\.conf'\.
+\# Например, ваш проект должен выглядеть так:
+\# ваш\_проект/
+\# ├── Dockerfile
+\# ├── docker\-compose\.yml
+\# ├── nginx/
+\# │   └── nginx\.conf
+\# └── \.\.\. \(остальные файлы проекта\)
+COPY nginx/nginx\.conf /etc/nginx/conf\.d/default\.conf
+
+\# Копируем все файлы приложения из предыдущей стадии сборки \(php\_app\)
+\# Это нужно, чтобы Nginx мог отдавать статические файлы \(CSS, JS, изображения\)
+\# и правильно перенаправлять запросы к PHP\-FPM\.
+COPY \-\-from\=php\_app /var/www/html /var/www/html
+
+\# Порт 80 \- это стандартный порт для веб\-сервера \(HTTP\)\.
+\# Через этот порт пользователи будут обращаться к твоему приложению\.
+EXPOSE 80
+
+\# Команда, которая запускается при старте контейнера: запуск Nginx
+CMD \["nginx", "\-g", "daemon off;"\]
